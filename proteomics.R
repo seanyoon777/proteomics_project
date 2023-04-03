@@ -1,24 +1,18 @@
 #setting foundations
-if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
-if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
-if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
-install.packages("corrr")
-install.packages("igraph")
-install.packages('cluster')
-install.packages('factoextra')
-library(corrr)
-library(tidyverse)
-library(purrr)
-library(igraph)
-library(corrplot)
-library(caret)
-library(dplyr)
-library(data.table)
-library(ggplot2)
-library(pls)
-library(tidyverse)
-library(cluster)
-library(factoextra)
+
+load_lib("tidyverse")
+load_lib("caret")
+load_lib("data.table")
+load_lib("corrr")
+load_lib("igraph")
+load_lib("cluster")
+load_lib("factoextra")
+load_lib("purrr")
+load_lib("corrplot")
+load_lib("dplyr")
+load_lib("ggplot2")
+load_lib("pls")
+load_lib("ggraph")
 
 loess_models <- function(plasma_prot_zscore_age, loess_span = 0.75) {
   plasma_long <- plasma_prot_zscore_age %>%
@@ -64,4 +58,10 @@ loess_heatmap <- function(plasma_pred_zscore_long) {
           axis.ticks.y = element_blank(),
           plot.title = element_text(hjust = 0.5))
 }
+
+
+#cluster by trend 
+
+
+
 
