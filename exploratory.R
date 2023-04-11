@@ -6,7 +6,7 @@ rm(list = ls())
 
 # 0. Basic data wrangling ----
 ## 0.1. Import data files ----
-dir = "/Users/seonghyunyoon/Downloads/proteomics_project_1/"
+dir = "/Users/seonghyunyoon/Downloads/proteomics_project/data"
 barcodes <- read.csv(paste(dir, "CSF_plasma_matched_barcodes.csv", sep = "/"))
 
 CSF <- read.csv(paste(dir, "CSF_metadata_2023-03-04.csv", sep = "/"))
@@ -236,25 +236,42 @@ for(i in 1:(ncol(intake_filtered) - 3)) {
                              + patientdata_filtered$Storage_days 
                              + patientdata_filtered$Visit))
 } # Very low r-squared values
+# TO DO: Average storage days, use only first visits 
+# separate stat value dataframe for age, gender, etc (rows = proteins, cols = tval, pval, etc)
+# condense diagnosis group coding into more succinct coding (major disease category)
+# Same analysis but in the bigger dataset (maybe combine?)
+# diagnostic groups --> other dataset probs has HC and AD. 
+# ADMCI + MCI = MCI (mild cognitive impairment), HC = HC, LBD + PD + PDD + PDMCI = PD, get rid of SCI
+# AD is set as reference group. Set HC as reference group. 
+# Zero intercept model --> instead of picking specific reference factor, sets mean value of all data as intercept. --> look into this 
+# Run LM and / LMER if there's enough different number of visits 
+# Visualize tables: volcano plot with coffecients in x axis and -log10(q) in y axis (preferably w/ labels and w/ y threshold value) 
 
-#sigma
+# New project: Sparser versions (800 total different markers to predict 20 organs. What's better is like 20 markers, cuz its small enough to deploy in a clinical trial)
+# 
 
 intake_lmer_table <- vector("list", ncol(intake_filtered) - 3)
 for(i in 1:(ncol(intake_filtered) - 3)) {
-  intake_lm_table[[i]] <- summary(lm(intake_filtered[, i + 3] ~ 
+  intake_lmer_table[[i]] <- summary(lmer(intake_filtered[, i + 3] ~ 
                                        patientdata_filtered$Diagnosis_group 
                                      + patientdata_filtered$Age 
                                      + patientdata_filtered$Gender
                                      + patientdata_filtered$Storage_days 
-                                     + patientdata_filtered$Visit))
-}
+                                     + patientdata_filtered$Visit + (1 | patientdata_filtered$PIDN)))
+} # lot of singular fits
 
-lmer(intake_filtered[, 3:ncol(intake_filtered)] ~ 
+
+
+lmer(intake_filtered[, 3] ~ 
           patientdata_filtered$Diagnosis_group 
         + patientdata_filtered$Age 
         + patientdata_filtered$Gender
         + patientdata_filtered$Storage_days 
-        + patientdata_filtered$Visit + (1 | PIDN))
+        + patientdata_filtered$Visit + (1 | patientdata_filtered$PIDN))
+
+lmer(formula = intake_filtered[, 3:ncol(intake_filtered)] ~ 
+       Diagnosis_group + Age + Gender + Storage_days + Visit + (1 | PIDN), 
+     data = patientdata_filtered)
 
 ## 1.4. Use Intake to create differential expressions ----
 #lmer(prot_ratio ~ disease + age + gender + protein_storage + visit + (1|PIDN))
