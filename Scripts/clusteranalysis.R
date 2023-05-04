@@ -28,6 +28,7 @@ load_lib("Cairo")
 load_lib("ComplexHeatmap")
 load_lib("loessclust")
 load_lib("ggrepel")
+load_lib("lsa")
 
 get_biodata <- function(path) {
   dir <- "/Users/seonghyunyoon/Downloads/proteomics_project/data"
@@ -112,7 +113,7 @@ plasma_prot_fil <- match_by(plasma_prot, common_ID)
 plasma_patient_fil <- match_by(plasma_patient, common_ID)
 patient_meta_fil <- match_by(patient_meta, common_ID)
 
-intake_fil <- 1 - CSF_prot_fil[4:nprots] / plasma_prot_fil[4:nprots]
+intake_fil <- 1 - CSF_prot_fil[4:ncol(CSF_prot_fil)] / plasma_prot_fil[4:ncol(plasma_prot_fil)]
 
 patientdata_fil <- merge(CSF_patient_fil, plasma_patient_fil, by = "PA_DB_UID") %>% 
   select(PA_DB_UID = PA_DB_UID, Sex = gender, DOB = DateOfBirth, 
@@ -140,6 +141,7 @@ date_window <- 180
 patient_strict <- patientdata_summary[patientdata_summary$drawdate_diff <= date_window, ]
 intake_strict <- intake_fil[patientdata_summary$drawdate_diff <= date_window, ]
 
+intake_strict_lm_models <- list()
 for(i in 1:length(all_prots)) {
   intake_strict_lm_models[[i]] <- summary(lm(intake_strict[, i] ~ 
                                                 relevel(factor(patient_strict$final_status), ref = "CO") + 
@@ -253,6 +255,14 @@ for (i in 1:length(xVars)) {
 
 gridExtra::grid.arrange(grobs = knight_strict_volcanoplot, ncol = 3)
 
+# write csv files 
+for (i in 1:6) {
+  write.csv(knight_strict_volcanodata[[i]], 
+            paste0("data/generated_data/knight_strict_volcanodata_", xVars[i]))
+}
+
+
+
 
 # 1. confirm if group_by is right? 
 # 2. generate new volcano plots 
@@ -279,9 +289,13 @@ for (i in 1:length(xVars)) {
 
 gridExtra::grid.arrange(grobs = knight_lenient_volcanoplot, ncol = 3)
 
+for (i in 1:6) {
+  write.csv(knight_lenient_volcanodata[[i]], 
+            paste0("data/generated_data/knight_lenient_volcanodata_", xVars[i]))
+}
 
 # export some data
-(knight_strict_volcanodata[[1]])$Protein <- all_prots
+
 
 
 # same thing with stanford data?
@@ -328,9 +342,146 @@ patientdata_filtered <- plasma %>%
 
 
 # CLUSTERING ANALYSIS
-intake_fil
+AD_index <- patientdata_summary$final_status == "AD"
+patientdata_AD <- patientdata_summary[AD_index, ]
+CO_index <- patientdata_summary$final_status == "CO"
+patientdata_CO <- patientdata_summary[CO_index, ]
+
+intake_AD <- intake_fil[AD_index, ]
+intake_CO <- intake_fil[CO_index, ]
+
+age_min <- max(min(patientdata_AD$age), min(patientdata_CO$age))
+age_max <- min(max(patientdata_AD$age), max(patientdata_CO$age))
+intake_age_seq <- seq(age_min, age_max, by = 0.25)
 
 
+generate_loess_preddata <- function(x, Y, x_seq, xlab) {
+  models <- vector("list", ncol(Y))
+  data_pred <- data.frame(xlab = x_seq)
+  for (i in 1:ncol(Y)) {
+    models[[i]] <- loess(Y[[i]] ~ x)
+    data_pred[, i + 1] <- predict(models[[i]], x_seq)
+  }
+  colnames(data_pred) <- c(xlab, all_prots)
+  return(data_pred)
+}
+
+
+intake_pred_AD <- generate_loess_preddata(patientdata_AD$age, intake_AD, intake_age_seq, "Age")
+intake_pred_AD_z <- scale(intake_pred_AD[-1])
+intake_pred_CO <- generate_loess_preddata(patientdata_CO$age, intake_CO, intake_age_seq, "Age")
+intake_pred_CO_z <- scale(intake_pred_CO[-1])
+
+intake_AD_z_dist <- dist(t(intake_pred_AD_z), method = "euclidean")
+intake_AD_z_clust <- hclust(intake_AD_z_dist, method = "ward.D")
+intake_CO_z_dist <- dist(t(intake_pred_CO_z), method = "euclidean")
+intake_CO_z_clust <- hclust(intake_CO_z_dist, method = "ward.D")
+
+silhouette_list <- vector()
+for (k in 2:10) {
+  AD_cut_clusters <- cutree(intake_AD_z_clust, k)
+  AD_vals <- silhouette(AD_cut_clusters, intake_AD_z_dist)
+  silhouette_val <- mean(AD_vals[, 3])
+  silhouette_list[k - 1] <- silhouette_val
+}
+plot(silhouette_list)
+# 6 or 9 clusters seems optimal? lets check for CO. 
+
+silhouette_list_CO <- vector()
+for (k in 2:10) {
+  CO_cut_clusters <- cutree(intake_CO_z_clust, k)
+  CO_vals <- silhouette(CO_cut_clusters, intake_CO_z_dist)
+  silhouette_val <- mean(CO_vals[, 3])
+  silhouette_list_CO[k - 1] <- silhouette_val
+}
+plot(silhouette_list_CO)
+# 6 or 10 clusters seem optimal. 
+# so lets try 6 for both? 
+nclust <- 10
+
+intake_AD_clust <- cutree(intake_AD_z_clust, k = nclust) %>% 
+  data.frame(cluster = .)
+intake_AD_clust["protein"] = rownames(intake_AD_clust)
+intake_AD_clust <- intake_AD_clust %>% select(protein, cluster)
+rownames(intake_AD_clust) <- c()
+
+intake_CO_clust <- cutree(intake_CO_z_clust, k = nclust) %>%
+  data.frame(cluster = .)
+intake_CO_clust["protein"] = rownames(intake_CO_clust)
+intake_CO_clust <- intake_CO_clust %>% select(protein, cluster)
+rownames(intake_CO_clust) <- c()
+
+
+# lets see which ones changed clusters 
+sum(intake_AD_clust$cluster == intake_CO_clust$cluster) # theres a lot of proteins that changed clusters (6017)
+
+# we need a different method...
+# maybe first try plotting? 
+intake_pred_AD_z_long <- cbind(data.frame(age = intake_age_seq), intake_pred_AD_z)
+intake_pred_AD_z_long <- intake_pred_AD_z_long %>% gather(key = protein, value = value, -age) %>% 
+  inner_join(intake_AD_clust, by = "protein") %>% 
+  arrange(cluster, value, age)
+
+intake_pred_CO_z_long <- cbind(data.frame(age = intake_age_seq), intake_pred_CO_z)
+intake_pred_CO_z_long <- intake_pred_CO_z_long %>% gather(key = protein, value = value, -age) %>% 
+  inner_join(intake_CO_clust, by = "protein") %>% 
+  arrange(cluster, protein, age) 
+
+
+
+generate_clusterplot <- function(data) {
+  data %>% 
+    ggplot(aes(x = age, y = value, group = protein, color = factor(cluster))) +
+    geom_line(stat = "smooth", method = "loess", se = FALSE, linewidth = 0.5, alpha = 0.1) +
+    scale_color_manual(
+      values = c("#FF6F61", "#6B5B95", "#88B04B", "#FFA500", "#92A8D1", "#FF69B4", 
+                 "#955251", "#008080", "#DA70D6", "#6A5ACD")) +
+    labs(x = "X-axis", y = "Y-axis", color = "Cluster") +
+    facet_wrap(~ cluster, ncol = 3, nrow = 4, labeller = labeller(cluster = as.character)) +
+    stat_summary(fun.data = "mean_cl_normal", geom = "line",
+                 aes(group = cluster, color = factor(cluster)),
+                 linewidth = 0.8, alpha = 1, linetype = "solid", color = "white") +
+    stat_summary(fun.data = "mean_cl_normal", geom = "line",
+                 aes(group = cluster, color = factor(cluster)),
+                 linewidth = 0.5, alpha = 0.8)
+}
+
+#interesting plots...
+generate_clusterplot(intake_pred_CO_z_long)
+generate_clusterplot(intake_pred_AD_z_long)
+
+# tried to see macro trend change, but not sure
+# let's see specific proteins. choose a protein and plot AD and CO 
+AD_CO_comparison <- function(protein) {
+  AD_CO_data <- data.frame(age = intake_age_seq, 
+                           CO = intake_pred_CO_z[, protein], AD = intake_pred_AD_z[, protein]) %>%
+    gather(key = diagnosis, value = value, -age)
+  ggplot(AD_CO_data, aes(age, value)) + 
+    geom_line(aes(color = diagnosis))
+}
+
+AD_CO_comparison(all_prots[4])
+
+# quantify how different each of the trajectories are and rank them?
+# 1. maybe not on values, but how the "shape" changed? in this case, KS test
+# 2. maybe on values 
+
+euclidean <- function(a, b) sqrt(sum((a - b)^2))
+intake_pred_AD_znorm <- apply(intake_pred_AD_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+intake_pred_CO_znorm <- apply(intake_pred_CO_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+intake_traj_dist <- data.frame(protein = all_prots)
+for (i in 1:nprots) {
+  intake_traj_dist[i, 2] <- euclidean(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
+  intake_traj_dist[i, 3] <- cosine(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
+}
+colnames(intake_traj_dist) <- c("protein", "euclidean_dist", "cosine_sim")
+intake_traj_dist <- intake_traj_dist %>% mutate(abs_cosine_sim = abs(cosine_sim))
+for (i in 1:nprots) {
+  intake_traj_dist[i, 5] <- euclidean(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i]) 
+  intake_traj_dist[i, 6] <- cosine(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i])  
+}
+colnames(intake_traj_dist) <- c("protein", "euclidean", "cosine", "abs_cosine", 
+                                "norm_euclidean", "norm_cosine")
 
 
 
