@@ -12,7 +12,7 @@ load_lib <- function(packages, repos = "http://cran.us.r-project.org") {
 
 load_lib(c("tidyverse", "caret", "data.table", "corrr", "igraph", "cluster", "factoextra", "purrr", 
            "corrplot", "dplyr", "ggplot2", "pls", "ggraph", "circlize", "Cairo", "ComplexHeatmap", 
-           "loessclust", "ggrepel", "lsa"))
+           "loessclust", "ggrepel", "lsa", "gprofiler2"))
 
 get_biodata <- function(path) {
   dir <- "/Users/seonghyunyoon/Downloads/proteomics_project/data"
@@ -726,50 +726,33 @@ intake_traj_plot(intake2_traj_dist, "euclidean", "norm_cosine", 5)
 write.csv(intake2_traj_dist, "data/generated_data/stanford_intake_traj_dist.csv")
 
 
-
-
-
-# visualization of intake 
-generate_intakeplot <- function(protein, date_window, diagnosis) {
-  if (missing(date_window)) {
-    intake_lenient
-  }
-  if (missing(date_window)) {
-    if (missing(diagnosis)) {
-      
-    } else if (diagnosis == "CO") {
-      linedata <- data.frame(age = intake_age_seq, value = intake_pred_CO_z[, protein])
-    } else if (diagnosis == "AD") {
-      linedata <- data.frame(age = intake_age_seq, value = intake_pred_AD_z[, protein])
-    }
+gprofileplot_generate <- function(data, var, num, top) {
+  if (top) {
+    topdata <- head(data[order(-data[[var]]), ], num)
   } else {
-    if (date_window == "strict") {
-      model <- loess()
-    }
+    topdata <- head(data[order(data[[var]]), ], num)
   }
-  
-  
-  
-  #choose correct loess interpolated 
-  scatterdata <- intake_strict %>% select(protein)
-  
-  
-  if (diagnosis == "AD" & lenient) {
-    scatterdata <- intake_strict_AD %>% select(protein)
-  } else if (diagnosis == "CO") {
-    scatterdata <- intake_strict_CO %>% select(protein)
-  }
-  scatterdata <- intake_strict
-  if (filter == "lenient" || filter == "strict") {
-    scatterdata <- 
-  }
-  
-  ggplot() + 
-    geom_line(linedata, aes(x = age, y = value)) + 
-    geom_point(scatterdata, aes(x = age, y = value))
+  proteins <- str_extract(topdata$protein, "\\w+(?=\\.)")
+  gostres <- gost(query = proteins,
+                  organism = "hsapiens")
+  gostplot(gostres, capped = FALSE, interactive = FALSE)
 }
 
+gprofileplot_generate(intake2_traj_dist, "euclidean", 50, TRUE)
+gprofileplot_generate(intake2_traj_dist, "euclidean", 50, FALSE)
 
+
+gprofileplot_generate(intake_traj_dist, "euclidean", 50, TRUE)
+gprofileplot_generate(intake_traj_dist, "euclidean", 50, FALSE)
+
+
+cat(paste(str_extract(intake2_traj_dist_euc$protein, "\\w+(?=\\.)"), collapse = "\n"))
+
+
+
+intake_traj_dist_euc <- intake_traj_dist[sort(-intake_traj_dist$euclidean), ]
+intake_traj_dist_euc <- head(intake_traj_dist_euc, 100)
+cat(paste(str_extract(intake_traj_dist_euc$protein, "\\w+(?=\\.)"), collapse = "\n"))
 
 # enricher: transcription factor focused analysis. 
 # string-db: protein interaction network
