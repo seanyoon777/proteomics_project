@@ -437,7 +437,26 @@ colnames(intake_traj_dist) <- c("protein", "AD_cluster", "CO_cluster", "euclidea
 
 write.csv(intake_traj_dist, "data/generated_data/knight_intake_traj_dist.csv")
 
+intake_traj_plot <- function(data, xvar, yvar, num) {
+  bottom <- head(data[order(data[[xvar]] * data[[yvar]]), ], num)
+  top <- head(data[order(-data[[xvar]] * data[[yvar]]), ], num)
+  data %>% ggplot(aes(x = !!sym(xvar), y = !!sym(yvar))) + 
+    geom_point(aes(alpha = 0.1)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
+          plot.background = element_rect(fill = "white"),
+          axis.title = element_text(size = 9.5),
+          axis.text = element_text(size = 7),
+          plot.title = element_text(size = 10, hjust = 0.5), 
+          axis.line = element_blank()) + 
+    geom_text_repel(data = bottom, aes(label = protein), size = 3, 
+                    color = "black", min.segment.length = 0) + 
+    geom_text_repel(data = top, aes(label = protein), size = 3, 
+                    color = "black", min.segment.length = 0) 
+  
+}
 
+intake_traj_plot(intake_traj_dist, "euclidean", "cosine", 5)
+intake_traj_plot(intake_traj_dist, "euclidean", "norm_cosine", 5)
 
 
 # same thing with stanford data? ----
@@ -571,10 +590,140 @@ for (i in 1:length(xVars2)) {
 }
 
 
+# now we analyze clusters of data ----
+AD_index2 <- patientdata2_fil$final_status == "AD"
+patientdata2_AD <- patientdata2_fil[AD_index2, ]
+CO_index2 <- patientdata2_fil$final_status == "CO"
+patientdata2_CO <- patientdata2_fil[CO_index2, ]
+
+intake2_AD <- intake2_fil[AD_index2, ]
+intake2_CO <- intake2_fil[CO_index2, ]
+
+age2_min <- max(min(patientdata2_AD$avg_drawage), min(patientdata2_CO$avg_drawage))
+age2_max <- min(max(patientdata2_AD$avg_drawage), max(patientdata2_CO$avg_drawage))
+intake2_age_seq <- seq(age2_min, age2_max, by = 0.25)
+
+generate_loess_preddata <- function(x, Y, x_seq, xlab) {
+  models <- vector("list", ncol(Y))
+  data_pred <- data.frame(xlab = x_seq)
+  for (i in 1:ncol(Y)) {
+    models[[i]] <- loess(Y[[i]] ~ x)
+    data_pred[, i + 1] <- predict(models[[i]], x_seq)
+  }
+  colnames(data_pred) <- c(xlab, colnames(Y))
+  return(data_pred)
+}
+
+intake2_pred_AD <- generate_loess_preddata(patientdata2_AD$avg_drawage, intake2_AD, 
+                                           intake2_age_seq, "Age")
+intake2_pred_AD_z <- scale(intake2_pred_AD[-1])
+intake2_pred_CO <- generate_loess_preddata(patientdata2_CO$avg_drawage, intake2_CO, 
+                                           intake2_age_seq, "Age")
+intake2_pred_CO_z <- scale(intake2_pred_CO[-1])
+
+intake2_AD_z_dist <- dist(t(intake2_pred_AD_z), method = "euclidean")
+intake2_AD_z_clust <- hclust(intake2_AD_z_dist, method = "ward.D")
+intake2_CO_z_dist <- dist(t(intake2_pred_CO_z), method = "euclidean")
+intake2_CO_z_clust <- hclust(intake2_CO_z_dist, method = "ward.D")
+
+silhouette_list2 <- vector()
+for (k in 2:10) {
+  AD_cut_clusters2 <- cutree(intake2_AD_z_clust, k)
+  AD_vals2 <- silhouette(AD_cut_clusters2, intake2_AD_z_dist)
+  silhouette_val2 <- mean(AD_vals2[, 3])
+  silhouette_list2[k - 1] <- silhouette_val2
+}
+plot(silhouette_list2)
+# 6 or 9 clusters seems optimal? lets check for CO. 
+
+silhouette_list_CO2 <- vector()
+for (k in 2:10) {
+  CO_cut_clusters2 <- cutree(intake2_CO_z_clust, k)
+  CO_vals2 <- silhouette(CO_cut_clusters2, intake2_CO_z_dist)
+  silhouette_val2 <- mean(CO_vals2[, 3])
+  silhouette_list_CO2[k - 1] <- silhouette_val2
+}
+plot(silhouette_list_CO2)
+# 6 or 10 clusters seem optimal. 
+# so lets try 6 for both? 
+nclust <- 10
+
+intake2_AD_clust <- cutree(intake2_AD_z_clust, k = nclust) %>% 
+  data.frame(cluster = .)
+intake2_AD_clust["protein"] = rownames(intake2_AD_clust)
+intake2_AD_clust <- intake2_AD_clust %>% select(protein, cluster)
+rownames(intake2_AD_clust) <- c()
+
+intake2_CO_clust <- cutree(intake2_CO_z_clust, k = nclust) %>%
+  data.frame(cluster = .)
+intake2_CO_clust["protein"] = rownames(intake2_CO_clust)
+intake2_CO_clust <- intake2_CO_clust %>% select(protein, cluster)
+rownames(intake2_CO_clust) <- c()
+
+
+# lets see which ones changed clusters 
+sum(intake2_AD_clust$cluster == intake2_CO_clust$cluster) 
+# theres a lot of proteins that changed clusters (4977 - 415)
+
+# we need a different method...
+# maybe first try plotting? 
+intake2_pred_AD_z_long <- cbind(data.frame(age = intake2_age_seq), intake2_pred_AD_z)
+intake2_pred_AD_z_long <- intake2_pred_AD_z_long %>% gather(key = protein, value = value, -age) %>% 
+  inner_join(intake2_AD_clust, by = "protein") %>% 
+  arrange(cluster, value, age)
+
+intake2_pred_CO_z_long <- cbind(data.frame(age = intake2_age_seq), intake2_pred_CO_z)
+intake2_pred_CO_z_long <- intake2_pred_CO_z_long %>% gather(key = protein, value = value, -age) %>% 
+  inner_join(intake2_CO_clust, by = "protein") %>% 
+  arrange(cluster, protein, age) 
 
 
 
+generate_clusterplot <- function(data) {
+  data %>% 
+    ggplot(aes(x = age, y = value, group = protein, color = factor(cluster))) +
+    geom_line(stat = "smooth", method = "loess", se = FALSE, linewidth = 0.5, alpha = 0.1) +
+    scale_color_manual(
+      values = c("#FF6F61", "#6B5B95", "#88B04B", "#FFA500", "#92A8D1", "#FF69B4", 
+                 "#955251", "#008080", "#DA70D6", "#6A5ACD")) +
+    labs(x = "X-axis", y = "Y-axis", color = "Cluster") +
+    facet_wrap(~ cluster, ncol = 3, nrow = 4, labeller = labeller(cluster = as.character)) +
+    stat_summary(fun.data = "mean_cl_normal", geom = "line",
+                 aes(group = cluster, color = factor(cluster)),
+                 linewidth = 0.8, alpha = 1, linetype = "solid", color = "white") +
+    stat_summary(fun.data = "mean_cl_normal", geom = "line",
+                 aes(group = cluster, color = factor(cluster)),
+                 linewidth = 0.5, alpha = 0.8)
+}
 
+#interesting plots...
+generate_clusterplot(intake2_pred_CO_z_long)
+generate_clusterplot(intake2_pred_AD_z_long)
+
+
+intake2_pred_AD_znorm <- apply(intake2_pred_AD_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+intake2_pred_CO_znorm <- apply(intake2_pred_CO_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+intake2_traj_dist <- data.frame(protein = ncol(intake2_fil))
+intake2_traj_dist <- inner_join(data.frame(protein = colnames(intake2_fil)), intake2_AD_clust)
+intake2_traj_dist <- inner_join(intake2_traj_dist, intake2_CO_clust, by = join_by(protein))
+for (i in 1:ncol(intake2_fil)) {
+  intake2_traj_dist[i, 4] <- euclidean(intake2_pred_AD_z[, i], intake2_pred_CO_z[, i]) 
+  intake2_traj_dist[i, 5] <- cosine(intake2_pred_AD_z[, i], intake2_pred_CO_z[, i]) 
+}
+colnames(intake2_traj_dist) <- c("protein", "AD_cluster", "CO_cluster", "euclidean_dist", "cosine_sim")
+for (i in 1:ncol(intake2_fil)) {
+  intake2_traj_dist[i, 6] <- euclidean(intake2_pred_AD_znorm[, i], intake2_pred_CO_znorm[, i]) 
+  intake2_traj_dist[i, 7] <- cosine(intake2_pred_AD_znorm[, i], intake2_pred_CO_znorm[, i])  
+}
+colnames(intake2_traj_dist) <- c("protein", "AD_cluster", "CO_cluster", "euclidean", "cosine", 
+                                "norm_euclidean", "norm_cosine")
+
+
+intake_traj_plot(intake2_traj_dist, "euclidean", "cosine", 5)
+intake_traj_plot(intake2_traj_dist, "euclidean", "norm_cosine", 5)
+
+
+write.csv(intake2_traj_dist, "data/generated_data/stanford_intake_traj_dist.csv")
 
 
 
