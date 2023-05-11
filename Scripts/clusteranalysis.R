@@ -10,25 +10,9 @@ load_lib <- function(packages, repos = "http://cran.us.r-project.org") {
   }
 }
 
-load_lib("tidyverse")
-load_lib("caret")
-load_lib("data.table")
-load_lib("corrr")
-load_lib("igraph")
-load_lib("cluster")
-load_lib("factoextra")
-load_lib("purrr")
-load_lib("corrplot")
-load_lib("dplyr")
-load_lib("ggplot2")
-load_lib("pls")
-load_lib("ggraph")
-load_lib("circlize")
-load_lib("Cairo")
-load_lib("ComplexHeatmap")
-load_lib("loessclust")
-load_lib("ggrepel")
-load_lib("lsa")
+load_lib(c("tidyverse", "caret", "data.table", "corrr", "igraph", "cluster", "factoextra", "purrr", 
+           "corrplot", "dplyr", "ggplot2", "pls", "ggraph", "circlize", "Cairo", "ComplexHeatmap", 
+           "loessclust", "ggrepel", "lsa"))
 
 get_biodata <- function(path) {
   dir <- "/Users/seonghyunyoon/Downloads/proteomics_project/data"
@@ -198,13 +182,16 @@ for (i in 1:length(all_prots)) {
 }
 
 
-
-generate_lmsummary <- function(data, date_window, data_type = c("ADRC", "Knight"))
-
+eliminate_outliers <- function(data, var) {
+  vec <- as.numeric(data[[var]])
+  ub <- mean(vec) + IQR(vec) * 1.5
+  lb <- mean(vec) - IQR(vec) * 1.5
+  index <- vec <= ub | vec >= lb
+  data[index, ]
+}
 
 generate_volcanodata <- function(data, variable) {
   volcano_data <- data %>% filter(xVar == variable) %>% 
-  #group_by(Protein) %>%
   mutate(padj = p.adjust(Pval, method = "fdr")) %>%
   mutate(qval = -log10(padj), 
          log2fc = Coefficient) %>% 
@@ -216,7 +203,12 @@ generate_volcanodata <- function(data, variable) {
   return(volcano_data)
 }
 
+generate_volcanodata_outliers <- function(data, variable) {
+  generate_volcanodata(eliminate_outliers(data, "Coefficient"), variable)
+}
+
 generate_volcanoplot <- function(volcano_data, variable) {
+  top_genes <- head(volcano_data[order(-volcano_data$qval), ], 10)
   ggplot(volcano_data, aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
     geom_point(size = 0.5, alpha = 0.8, na.rm = T) +
     #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
@@ -235,7 +227,9 @@ generate_volcanoplot <- function(volcano_data, variable) {
           plot.title = element_text(size = 10, hjust = 0.5), 
           axis.line = element_blank()) + 
     annotate("text", x = min(volcano_data$log2fc)*1.1, y = max(volcano_data$qval), 
-             label = variable, hjust = 0, size = 4)
+             label = variable, hjust = 0, size = 4) +
+    geom_text_repel(data = top_genes, aes(label = Protein, vjust = qval, hjust = log2fc), 
+                     size = 3, color = "black", min.segment.length = 0)
 }
 
 
@@ -245,7 +239,7 @@ xVars <- c("AD", "FTD", "Non-AD dementia", "Male", "Age", "Storage_days")
 knight_strict_volcanodata <- list()
 for (i in 1:length(xVars)) {
   knight_strict_volcanodata[[i]] <- generate_volcanodata(intake_strict_lm_summary, 
-                                                 variable = xVars[i])
+                                                         variable = xVars[i])
 }
 knight_strict_volcanoplot <- list()
 for (i in 1:length(xVars)) {
@@ -258,10 +252,13 @@ gridExtra::grid.arrange(grobs = knight_strict_volcanoplot, ncol = 3)
 # write csv files 
 for (i in 1:6) {
   write.csv(knight_strict_volcanodata[[i]], 
-            paste0("data/generated_data/knight_strict_volcanodata_", xVars[i]))
+            paste0("data/generated_data/knight_volcanodata/knight_strict_volcanodata_", xVars[i]))
 }
 
-
+for (i in 1:6) {
+  write.csv(knight_lenient_volcanodata[[i]], 
+            paste0("data/generated_data/knight_volcanodata/knight_lenient_volcanodata_", xVars[i]))
+}
 
 
 # 1. confirm if group_by is right? 
@@ -293,52 +290,6 @@ for (i in 1:6) {
   write.csv(knight_lenient_volcanodata[[i]], 
             paste0("data/generated_data/knight_lenient_volcanodata_", xVars[i]))
 }
-
-# export some data
-
-
-
-# same thing with stanford data?
-barcodes2 <- get_biodata("CSF_plasma_matched_barcodes.csv")
-CSF_patient2 <- get_biodata("CSF_metadata_2023-03-04.csv")
-CSF_protein2 <- get_biodata("CSFProts.log10.noLODFilter.csv")
-plasma_patient2 <- get_biodata("Plasma_metadata_samplesOnly_2023-03-04.csv")
-plasma_protein2 <- get_biodata("plasmaProts.log10.csv")
-
-CSF_patient2$Age <- gsub('^"&"$', '', CSF_patient2$Age)
-CSF_patient2$Age <- as.numeric(CSF_patient2$Age)
-
-common_prots2 <- intersect(names(CSF_protein2), names(plasma_protein2))
-CSF_protein2 <- data.frame(Barcode = CSF_patient2$Barcode, CSF_protein2[, common_prots2]) 
-plasma_protein2 <- data.frame(Barcode = plasma_protein2$Barcode, plasma_protein2[, common_prots2])
-
-
-CSF_protein2_fil <- CSF_protein2[CSF_protein2$Barcode %in% barcodes2$CSF_Barcode, ]
-CSF_patient2_fil <- CSF_patient2[CSF_patient2$Barcode %in% barcodes2$CSF_Barcode, ]
-plasma_protein2_fil <- plasma_protein2 %>%
-  filter(Barcode %in% barcodes2$Plasma_Barcode) %>% 
-  arrange(match(Barcode, barcodes2$Plasma_Barcode)) %>% 
-  slice(order(match(Barcode, barcodes2$Plasma_Barcode)))
-
-age2_filtered <- plasma_patient2 %>% 
-  select(Age, Barcode) %>% 
-  rename(Plasma_Barcode = Barcode) %>% 
-  filter(Plasma_Barcode %in% barcodes2$Plasma_Barcode) %>% 
-  arrange(match(Plasma_Barcode, barcodes2$Plasma_Barcode)) %>% 
-  mutate(CSF_Barcode = CSF_patient2_fil$Barcode) %>% 
-  select(Age, CSF_Barcode, Plasma_Barcode)
-
-patientdata_filtered <- plasma %>% 
-  rename(Plasma_Barcode = Barcode, Plasma_Zscore = ConnectivityZscore) %>% 
-  filter(Plasma_Barcode %in% barcodes$Plasma_Barcode) %>% 
-  arrange(match(Plasma_Barcode, barcodes$Plasma_Barcode)) %>% 
-  mutate(CSF_Zscore = CSF_patientdata_filtered$ConnectivityZscore, 
-         CSF_Barcode = CSF_patientdata_filtered$Barcode) %>% 
-  .[, c(ncol(.), 1:(ncol(.) - 1))] %>% 
-  .[, c(1:(ncol(.) - 2), ncol(.), ncol(.) - 1)]
-
-
-
 
 
 # CLUSTERING ANALYSIS
@@ -470,25 +421,230 @@ euclidean <- function(a, b) sqrt(sum((a - b)^2))
 intake_pred_AD_znorm <- apply(intake_pred_AD_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
 intake_pred_CO_znorm <- apply(intake_pred_CO_z, 2, function(x) (x - min(x)) / (max(x) - min(x)))
 intake_traj_dist <- data.frame(protein = all_prots)
+intake_traj_dist <- inner_join(data.frame(protein = all_prots), intake_AD_clust)
+intake_traj_dist <- inner_join(intake_traj_dist, intake_CO_clust, by = join_by(protein))
 for (i in 1:nprots) {
-  intake_traj_dist[i, 2] <- euclidean(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
-  intake_traj_dist[i, 3] <- cosine(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
+  intake_traj_dist[i, 4] <- euclidean(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
+  intake_traj_dist[i, 5] <- cosine(intake_pred_AD_z[, i], intake_pred_CO_z[, i]) 
 }
-colnames(intake_traj_dist) <- c("protein", "euclidean_dist", "cosine_sim")
-intake_traj_dist <- intake_traj_dist %>% mutate(abs_cosine_sim = abs(cosine_sim))
+colnames(intake_traj_dist) <- c("protein", "AD_cluster", "CO_cluster", "euclidean_dist", "cosine_sim")
 for (i in 1:nprots) {
-  intake_traj_dist[i, 5] <- euclidean(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i]) 
-  intake_traj_dist[i, 6] <- cosine(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i])  
+  intake_traj_dist[i, 6] <- euclidean(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i]) 
+  intake_traj_dist[i, 7] <- cosine(intake_pred_AD_znorm[, i], intake_pred_CO_znorm[, i])  
 }
-colnames(intake_traj_dist) <- c("protein", "euclidean", "cosine", "abs_cosine", 
+colnames(intake_traj_dist) <- c("protein", "AD_cluster", "CO_cluster", "euclidean", "cosine", 
                                 "norm_euclidean", "norm_cosine")
 
+write.csv(intake_traj_dist, "data/generated_data/knight_intake_traj_dist.csv")
+
+
+
+
+# same thing with stanford data? ----
+barcodes2 <- get_biodata("CSF_plasma_matched_barcodes.csv")
+CSF_patient2 <- get_biodata("CSF_metadata_2023-03-04.csv")
+CSF_protein2 <- get_biodata("CSFProts.log10.noLODFilter.csv")
+plasma_patient2 <- get_biodata("Plasma_metadata_samplesOnly_2023-03-04.csv")
+plasma_protein2 <- get_biodata("plasmaProts.log10.csv")
+
+CSF_patient2$Age <- gsub('^"&"$', '', CSF_patient2$Age)
+CSF_patient2$Age <- as.numeric(CSF_patient2$Age)
+
+common_prots2 <- intersect(names(CSF_protein2), names(plasma_protein2))
+CSF_protein2 <- data.frame(Barcode = CSF_patient2$Barcode, CSF_protein2[, common_prots2]) 
+plasma_protein2 <- data.frame(Barcode = plasma_protein2$Barcode, plasma_protein2[, common_prots2])
+
+
+CSF_protein2_fil <- CSF_protein2[CSF_protein2$Barcode %in% barcodes2$CSF_Barcode, ]
+CSF_patient2_fil <- CSF_patient2[CSF_patient2$Barcode %in% barcodes2$CSF_Barcode, ]
+plasma_protein2_fil <- plasma_protein2 %>%
+  filter(Barcode %in% barcodes2$Plasma_Barcode) %>% 
+  arrange(match(Barcode, barcodes2$Plasma_Barcode)) %>% 
+  slice(order(match(Barcode, barcodes2$Plasma_Barcode)))
+
+age2_filtered <- plasma_patient2 %>% 
+  select(Age, Barcode) %>% 
+  rename(Plasma_Barcode = Barcode) %>% 
+  filter(Plasma_Barcode %in% barcodes2$Plasma_Barcode) %>% 
+  arrange(match(Plasma_Barcode, barcodes2$Plasma_Barcode)) %>% 
+  mutate(CSF_Barcode = CSF_patient2_fil$Barcode) %>% 
+  select(Age, CSF_Barcode, Plasma_Barcode)
+
+patientdata_filtered <- plasma_patient2 %>% 
+  rename(Plasma_Barcode = Barcode, Plasma_Zscore = ConnectivityZscore) %>% 
+  filter(Plasma_Barcode %in% barcodes2$Plasma_Barcode) %>% 
+  arrange(match(Plasma_Barcode, barcodes2$Plasma_Barcode)) 
+
+stanford_gendermatch_index <- CSF_patient2_fil$Gender == patientdata_filtered$Gender
+CSF_patient2_fil <- CSF_patient2_fil[stanford_gendermatch_index, ]
+patientdata_filtered <- patientdata_filtered[stanford_gendermatch_index, ]
+age2_filtered <- age2_filtered[stanford_gendermatch_index, ]
+CSF_protein2_fil <- CSF_protein2_fil[stanford_gendermatch_index, ]
+plasma_protein2_fil <- plasma_protein2_fil[stanford_gendermatch_index, ]
+
+patientdata2_fil <- patientdata_filtered %>% 
+  mutate(CSF_Barcode = CSF_patient2_fil$Barcode, Plasma_drawage = Age, CSF_drawage = CSF_patient2_fil$Age, 
+         Plasma_storagedays = Storage_days, CSF_storagedays = CSF_patient2_fil$Storage_days,
+         CSF_days = CSF_patient2_fil$Storage_days, Plasma_drawdate = strptime(Date.of.draw, format = "%m/%d/%y"), 
+         CSF_drawdate = strptime(CSF_patient2_fil$Date_of_CSF_sample, format = "%m/%d/%y"), 
+         Plasma_drawstatus = Diagnosis_group, CSF_drawstatus = CSF_patient2_fil$Diagnosis_group) 
+patientdata2_fil <- patientdata2_fil %>% 
+  group_by(Plasma_Barcode) %>%
+  mutate(avg_drawage = (Plasma_drawage + as.numeric(CSF_drawage)) / 2, 
+         drawdate_diff = difftime(Plasma_drawdate, CSF_drawdate, units = "days"), 
+         avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>%
+  select(Plasma_Barcode, CSF_Barcode, Gender, avg_drawage, Plasma_drawdate, Plasma_drawage, Plasma_drawstatus, 
+         Plasma_storagedays, CSF_drawdate, CSF_drawage, CSF_drawstatus, CSF_storagedays, drawdate_diff, avg_drawdate) %>%
+  as.data.frame()
+  
+# actually drawdate diff is all below 90!!! we can proceed without setting a time window. 
+CSF_prot2_fil_z <- scale(CSF_protein2_fil[-c(1:3)])
+plasma_prot2_fil_z <- scale(plasma_protein2_fil[-c(1:3)])
+intake2_fil <- 1 - CSF_protein2_fil[-c(1:3)] / plasma_protein2_fil[-c(1:3)]
+
+# we also need to change some diagnosis status 
+# ADMCI -> AD, MCI-AD -> AD, HC -> CO
+
+patientdata2_fil <- patientdata2_fil %>% 
+  mutate(Plasma_drawstatus = 
+           if_else(Plasma_drawstatus == "ADMCI", "AD", Plasma_drawstatus)) %>% 
+  mutate(CSF_drawstatus = 
+           if_else(CSF_drawstatus == "MCI-AD", "AD", CSF_drawstatus)) %>% 
+  mutate(Plasma_drawstatus = 
+           if_else(Plasma_drawstatus == "HC", "CO", Plasma_drawstatus)) %>% 
+  mutate(CSF_drawstatus = 
+           if_else(CSF_drawstatus == "HC", "CO", CSF_drawstatus)) %>% 
+  mutate(final_status = 
+           if_else(Plasma_drawdate < CSF_drawdate, Plasma_drawstatus, CSF_drawstatus))
+
+patientdata2_AD_index <- patientdata2_fil$final_status == "AD" 
+patientdata2_CO_index <- patientdata2_fil$final_status == "CO"
+patientdata2_AD_index[is.na(patientdata2_AD_index)] <- FALSE
+patientdata2_CO_index[is.na(patientdata2_CO_index)] <- FALSE
+patientdata2_index <- patientdata2_AD_index | patientdata2_CO_index
+
+patientdata2_fil <- patientdata2_fil[patientdata2_index, ]
+intake2_fil <- intake2_fil[patientdata2_index, ]
+
+
+# first, we proceed with differential analysis 
+intake2_lm_models <- list()
+for(i in 1:ncol(intake2_fil)) {
+  intake2_lm_models[[i]] <- summary(lm(intake2_fil[, i] ~ 
+                                         relevel(factor(patientdata2_fil$final_status), ref = "CO") + 
+                                         relevel(factor(patientdata2_fil$Gender), ref = "F") +
+                                         patientdata2_fil$avg_drawage + 
+                                         patientdata2_fil$Plasma_storagedays + 
+                                         patientdata2_fil$CSF_storagedays))
+}
+
+intake2_lm_summary <- data.frame()
+for (i in 1:ncol(intake2_fil)) {
+  intake2_tidy_result <- data.frame(intake2_lm_models[[i]]$coefficients) %>% 
+    select(Estimate, Std..Error, Pr...t..) 
+  colnames(intake2_tidy_result) <- c("Coefficient", "StdError", "Pval")
+  intake2_tidy_result <- intake2_tidy_result[2:nrow(intake2_tidy_result), ] %>% 
+    mutate(xVar = c("AD", "Male", "Age", "Plasma_storagedays", "CSF_storagedays"), 
+           Protein = (colnames(intake2_fil))[i]) %>% 
+    select(Protein, xVar, Coefficient, StdError, Pval)
+  rownames(intake2_tidy_result) <- c()
+  intake2_lm_summary <- rbind(intake2_lm_summary, intake2_tidy_result)
+}
+
+
+xVars2 <- c("AD", "Male", "Age", "Plasma_storagedays", "CSF_storagedays")
+
+stanford_volcanodata <- list()
+for (i in 1:length(xVars2)) {
+  stanford_volcanodata[[i]] <- generate_volcanodata(intake2_lm_summary, variable = xVars2[i])
+}
+stanford_volcanoplot <- list()
+for (i in 1:length(xVars2)) {
+  stanford_volcanoplot[[i]] <- generate_volcanoplot(stanford_volcanodata[[i]], 
+                                                          variable = xVars2[i])
+}
+gridExtra::grid.arrange(grobs = stanford_volcanoplot, ncol = 3)
+
+for (i in 1:length(xVars2)) {
+  write.csv(stanford_volcanodata[[i]], 
+            paste0("data/generated_data/stanford_volcanodata/stanford_volcanodata_", xVars2[i]))
+}
 
 
 
 
 
 
+
+
+
+
+
+# visualization of intake 
+generate_intakeplot <- function(protein, date_window, diagnosis) {
+  if (missing(date_window)) {
+    intake_lenient
+  }
+  if (missing(date_window)) {
+    if (missing(diagnosis)) {
+      
+    } else if (diagnosis == "CO") {
+      linedata <- data.frame(age = intake_age_seq, value = intake_pred_CO_z[, protein])
+    } else if (diagnosis == "AD") {
+      linedata <- data.frame(age = intake_age_seq, value = intake_pred_AD_z[, protein])
+    }
+  } else {
+    if (date_window == "strict") {
+      model <- loess()
+    }
+  }
+  
+  
+  
+  #choose correct loess interpolated 
+  scatterdata <- intake_strict %>% select(protein)
+  
+  
+  if (diagnosis == "AD" & lenient) {
+    scatterdata <- intake_strict_AD %>% select(protein)
+  } else if (diagnosis == "CO") {
+    scatterdata <- intake_strict_CO %>% select(protein)
+  }
+  scatterdata <- intake_strict
+  if (filter == "lenient" || filter == "strict") {
+    scatterdata <- 
+  }
+  
+  ggplot() + 
+    geom_line(linedata, aes(x = age, y = value)) + 
+    geom_point(scatterdata, aes(x = age, y = value))
+}
+
+
+
+# enricher: transcription factor focused analysis. 
+# string-db: protein interaction network
+
+# do same thing with stanford dataset too 
+# 2 analysis: 1. clustering analysis over time / 
+#             2. differential expression using linear models with sliding powers
+# maybe accounting for different stages of disease in AD (measure of disease 
+# severity independent of age)
+
+
+
+knight_strict_volcanodata_outliers <- list()
+for (i in 1:length(xVars)) {
+  knight_strict_volcanodata_outliers[[i]] <- generate_volcanodata_outliers(intake_strict_lm_summary, 
+                                                         variable = xVars[i])
+}
+knight_strict_volcanoplot_outliers <- list()
+for (i in 1:length(xVars)) {
+  knight_strict_volcanoplot_outliers[[i]] <- generate_volcanoplot(knight_strict_volcanodata_outliers[[i]], 
+                                                         variable = xVars[i])
+}
+
+gridExtra::grid.arrange(grobs = knight_strict_volcanoplot_outliers, ncol = 3)
 
 
 
