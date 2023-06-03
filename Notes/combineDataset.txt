@@ -1,4 +1,4 @@
-Notes: 
+Thoughts: 
 - Date window of 100, 180 were both producing statistically weak results for the 
 AD group. 
 - initially thought it might be because proteins just highly fluctuate depending
@@ -10,7 +10,7 @@ within a year (12 months) of diagnosis. The serious memory concern group did hav
 huge fluctuations, but it was due to the lack of data. : 
 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7931952/#:~:text=Applied%20to%20data%20from%20the%20Alzheimer%27s%20Disease%20Neuroimaging,earliest%20subjective%20cognitive%20deficits%20to%20severe%20AD%20dementia. 
 
-Some notes: 
+Elementary findings: 
 - Top proteins for CO male volcanoplot were surprisingly consistent across all 
 dateframes (90, 100, 180, 1500). 
   - upregulated: CGA.CGB3.CGB7.4914.10.1, etc
@@ -25,3 +25,4 @@ dateframes (90, 100, 180, 1500).
   - Age has some results, but are surprisingly inconsistent lol
 
 - perhaps it varies significantly for AD patients. 
+- Also there are some that are consistently in the same cluster as albumin.
