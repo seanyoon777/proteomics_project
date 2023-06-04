@@ -1,28 +1,26 @@
-Thoughts: 
-- Date window of 100, 180 were both producing statistically weak results for the 
-AD group. 
-- initially thought it might be because proteins just highly fluctuate depending
-on each sample, but replicable results for the CO group disproves this possibility.
-So likely that it's due to low sample size
+Notes: 
 
+
+Updates: 
+- Combining the datasets with the correct indices took forever, but we eventually
+  have good volcanoplots + enriched pathways! 
+- I was trying to compare the volcano plots for knight and stanford separately, but
+  unfortunately too small sample size to do that. 
+- Clustering: previously used ward linkage, but empirically complete linkage is superior! 
+- We also have albumin enriched pathways. OCT4 18692474 ChIP-Seq MEFs Mouse 
+  appears in both CO and AD albumin cluster proteins. 
+  
+Thoughts: 
 - According to this paper, A-beta, tau, p-tau, etc doesn't significantly change 
-within a year (12 months) of diagnosis. The serious memory concern group did have
+within 4 months of diagnosis. The serious memory concern group did have
 huge fluctuations, but it was due to the lack of data. : 
 https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7931952/#:~:text=Applied%20to%20data%20from%20the%20Alzheimer%27s%20Disease%20Neuroimaging,earliest%20subjective%20cognitive%20deficits%20to%20severe%20AD%20dementia. 
+This could be the justification for using 120 days as our dateframe 
 
-Elementary findings: 
-- Top proteins for CO male volcanoplot were surprisingly consistent across all 
-dateframes (90, 100, 180, 1500). 
-  - upregulated: CGA.CGB3.CGB7.4914.10.1, etc
-  - downregulated: KLK3.8468.19.3, DEF104A.5763.67.3
+- Perhaps change how we cluster: 
+  https://link.springer.com/article/10.1007/s10489-021-02624-8 
   
-- Top protiens for CO age volcanoplot were not as consistent, but NEFL.10082.251.3 and 
-  DPEP2.8327.26.3 and a few others were consistent. 
-
-- volcano plots for AD were consistently unregulated, particularly the gender one. 
-  - I thought small samplesize, but even 171 doesn't work for 1500 days. 
-  - gender doesn't give promising results. 
-  - Age has some results, but are surprisingly inconsistent lol
-
-- perhaps it varies significantly for AD patients. 
-- Also there are some that are consistently in the same cluster as albumin.
+- The first paper uses average linkage (which performed very poorly) so not sure
+- Also, since we're clustering trajectories, not datapoints like the first paper, 
+  so not sure how we would be able to adapt that unless we modify the algorithm 
+  itself, but that would be a paper on its own...
