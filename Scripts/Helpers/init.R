@@ -1,0 +1,14 @@
+#setting foundations
+load_lib <- function(packages, repos = "http://cran.us.r-project.org") {
+  for (package in packages) {
+    if (!require(package, character.only = TRUE)) {
+      install.packages(package, repos = repos)
+    }
+    library(package, character.only = TRUE)
+  }
+}
+
+load_lib(c("tidyverse", "caret", "data.table", "igraph", "cluster", "purrr", 
+           "corrplot", "dplyr", "ggplot2", "ggraph", "circlize", "Cairo", "ComplexHeatmap", 
+           "ggrepel", "openxlsx", "stringr", "tidyr", "WGCNA"))
+load_lib(c("corrr", "gprofiler2"))
