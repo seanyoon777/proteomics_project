@@ -1,19 +1,7 @@
-rm(list = ls())
-
-#setting foundations
-load_lib <- function(packages, repos = "http://cran.us.r-project.org") {
-  for (package in packages) {
-    if (!require(package, character.only = TRUE)) {
-      install.packages(package, repos = repos)
-    }
-    library(package, character.only = TRUE)
-  }
-}
-
-load_lib(c("tidyverse", "caret", "data.table", "igraph", "cluster", "purrr", 
-           "corrplot", "dplyr", "ggplot2", "ggraph", "circlize", "Cairo", "ComplexHeatmap", 
-           "ggrepel", "openxlsx", "stringr", "tidyr", "WGCNA"))
-load_lib(c("corrr", "gprofiler2", "lsa", "factoextra", "pls"))
+source("Scripts/Helpers/init.R")
+source("Scripts/Helpers/differentialAnalysis.R")
+source("Scripts/Helpers/hierClust.R")
+source("Scripts/Helpers/demoHist.R")
 
 dir <- "/labs/twc/jarod/Data"
 get_biodata <- function(path) {
@@ -230,75 +218,21 @@ albumin_all_ratio_z <- scale(albumin_all_ratio)
 
 # Create histogram of population 
 drawdate_windows <- 20 * (0:6)
-drawdate_hists <- list()
-for (i in 1:6) {
-  patientdata_fil_bin <- all_patientdata[
-    abs(all_patientdata$drawdate_diff) < drawdate_windows[i + 1] & 
-      abs(all_patientdata$drawdate_diff) >= drawdate_windows[i], ]
-  
-  drawdate_hists[[i]] <- patientdata_fil_bin %>% 
-    ggplot(aes(x = avg_drawage, fill = final_status)) + 
-    geom_histogram(binwidth = 1, breaks = seq(30, 100, by = 10), 
-                   position = "stack", show.legend = FALSE, color = "black") + 
-    labs(title = paste0("Drawn within ", drawdate_windows[i], " and ", 
-                        drawdate_windows[i+1], " days"), 
-         x = "Average age when drawn", y = "Frequency") +
-    theme_classic() +
-    theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
-          plot.background = element_rect(fill = "white"),
-          axis.title = element_text(size = 9.5),
-          axis.text = element_text(size = 7),
-          plot.title = element_text(size = 10, hjust = 0.5), 
-          axis.line = element_blank()) +
-    scale_y_continuous(breaks = seq(0, 100, 10)) +
-    scale_fill_manual(values = c("CO" = "#00BFC4", "AD" = "#F8766D"))
-  
-  maxcount <- max(hist(patientdata_fil_bin$avg_drawage, 
-                       breaks = seq(30, 100, by = 10))$counts)
-  drawdate_hists[[i]] <- drawdate_hists[[i]] + 
-    annotate("text", x = 95, y = maxcount, label = paste0("n = ", nrow(patientdata_fil_bin)), 
-             size = 3)
-}
-#AD = red, CO = blue
-gridExtra::grid.arrange(grobs = drawdate_hists, ncol = 3)
-
-
-
+generate_sampleHist(all_patientdata, drawdate_windows) 
 
 # predict data and trends 
 age_min <- max(min(all_patientdata_AD$avg_drawage), min(all_patientdata_CO$avg_drawage))
 age_max <- min(max(all_patientdata_AD$avg_drawage), max(all_patientdata_CO$avg_drawage))
 age_seq <- seq(age_min, age_max, by = 0.25)
 
-loess_predict <- function(x, Y, x_seq, xlab) {
-  models <- vector("list", ncol(Y))
-  data_pred <- data.frame(xlab = x_seq)
-  for (i in 1:ncol(Y)) {
-    models[[i]] <- loess(Y[, i] ~ x)
-    data_pred[, i + 1] <- predict(models[[i]], x_seq)
-  }
-  colnames(data_pred) <- c(xlab, colnames(Y))
-  return(data_pred)
-}
-
 predratio_AD_z <- loess_predict(all_patientdata_AD$avg_drawage, all_ratio_AD_z, age_seq, "Age")
 predratio_CO_z <- loess_predict(all_patientdata_CO$avg_drawage, all_ratio_CO_z, age_seq, "Age")
 
 # clustering for CO and DA
 ratio_CO_z_dist <- dist(t(predratio_CO_z[-1]), method = "euclidean")
-ratio_CO_z_clust <- hclust(ratio_CO_z_dist, method = "ward.D")
+ratio_CO_z_clust <- hclust(ratio_CO_z_dist, method = "complete")
 ratio_AD_z_dist <- dist(t(predratio_AD_z[-1]), method = "euclidean")
-ratio_AD_z_clust <- hclust(ratio_AD_z_dist, method = "ward.D")
-
-determine_numclust <- function(clust, dist) {
-  silhouette <- vector()
-  for (k in 2:10) {
-    cut <- cutree(clust, k)
-    vals <- silhouette(cut, dist)
-    silhouette[k - 1] <- mean(vals[, 3])
-  }
-  plot(silhouette)
-}
+ratio_AD_z_clust <- hclust(ratio_AD_z_dist, method = "complete")
 
 determine_numclust(ratio_CO_z_clust, ratio_CO_z_dist)
 determine_numclust(ratio_AD_z_clust, ratio_AD_z_dist)
@@ -306,54 +240,15 @@ determine_numclust(ratio_AD_z_clust, ratio_AD_z_dist)
 
 nclust <- 10
 
-proteinByClust <- function(clust, dist, nclust) {
-  clust <- cutree(clust, k = nclust) %>% 
-    data.frame(cluster = .)
-  clust["protein"] = rownames(clust)
-  clust <- clust %>% relocate(cluster, .after = "protein")
-  rownames(clust) <- c()
-  return(clust)
-}
-
 ratio_AD_z_clustnum <- proteinByClust(ratio_AD_z_clust, ratio_AD_z_dist, nclust)
 ratio_CO_z_clustnum <- proteinByClust(ratio_CO_z_clust, ratio_CO_z_dist, nclust) # tbh 8 clusters are better
-
-proteinClustData <- function(data, clust) { 
-  long <- data %>% gather(key = protein, value = value, -Age) %>% 
-    inner_join(clust, by = "protein") %>% 
-    arrange(cluster, Age, value)
-  return(long)
-}
 
 ratio_AD_z_long <- proteinClustData(predratio_AD_z, ratio_AD_z_clustnum)
 ratio_CO_z_long <- proteinClustData(predratio_CO_z, ratio_CO_z_clustnum)
 
-generate_clusterplot <- function(data) {
-  data %>% 
-    ggplot(aes(x = Age, y = value, group = protein, color = factor(cluster))) +
-    geom_line(stat = "smooth", method = "loess", se = FALSE, linewidth = 0.5, alpha = 0.1) +
-    scale_color_manual(
-      values = c("#FF6F61", "#6B5B95", "#88B04B", "#FFA500", "#92A8D1", "#FF69B4", 
-                 "#955251", "#008080", "#DA70D6", "#6A5ACD")) +
-    labs(x = "Age (years)", y = "CSF Plasma Protein Ratio (Z-Scored)", color = "Cluster") +
-    facet_wrap(~ cluster, ncol = 3, nrow = 4, labeller = labeller(cluster = as.character)) +
-    stat_summary(fun.data = "mean_cl_normal", geom = "line",
-                 aes(group = cluster, color = factor(cluster)),
-                 linewidth = 0.8, alpha = 1, linetype = "solid", color = "white") +
-    stat_summary(fun.data = "mean_cl_normal", geom = "line",
-                 aes(group = cluster, color = factor(cluster)),
-                 linewidth = 0.5, alpha = 0.8) + 
-    theme(strip.text = element_blank(), 
-          panel.background = element_rect(fill = "white"),
-          panel.border = element_rect(color = "black", fill = NA),
-          panel.grid.major = element_blank(),
-          axis.line = element_blank(), 
-          legend.position = "none") +
-    labs(title = NULL)
-}
-
 generate_clusterplot(ratio_AD_z_long)
 generate_clusterplot(ratio_CO_z_long)
+ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == 10, ]
 
 
 # LOOK AT RATIO BW PLASMA AND CSF ALBUMIN (albumin index). look at which ones 
@@ -365,104 +260,19 @@ albumin_prots_CO <-ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == albumin_cl
 albumin_intersection <- intersect(albumin_prots_AD, albumin_prots_CO)
 
 # stratified analysis: remake the volcano plots 
-generate_lmodels <- function(protdata, patientdata) {
-  lmodels <- list()
-  for(i in 1:ncol(protdata)) {
-    lmodels[[i]] <- summary(lm(protdata[, i] ~ patientdata$Sex + 
-                                 patientdata$avg_drawage))
-  }
-  return(lmodels)
-}
-
 ratio_AD_models <- generate_lmodels(all_ratio_AD, all_patientdata_AD)
 ratio_CO_models <- generate_lmodels(all_ratio_CO, all_patientdata_CO)
-
-generate_lmsummary <- function(lmodels) {
-  lmsummary <- data.frame()
-  for (i in 1:length(all_prots)) {
-    tidyresult <- data.frame(lmodels[[i]]$coefficients) %>% 
-      select(Estimate, Std..Error, Pr...t..)
-    colnames(tidyresult) <- c("Coefficient", "StdError", "Pval")
-    tidyresult <- tidyresult[2:nrow(tidyresult), ] %>% 
-      mutate(xVar = c("Male", "Age"), 
-             Protein = all_prots[i]) %>% 
-      dplyr::select(Protein, xVar, Coefficient, StdError, Pval)
-    rownames(tidyresult) <- c()
-    lmsummary <- rbind(lmsummary, tidyresult)
-  }
-  return(lmsummary)
-}
 
 ratio_AD_summary <- generate_lmsummary(ratio_AD_models)
 ratio_CO_summary <- generate_lmsummary(ratio_CO_models)
 
 xVars <- c("Male", "Age")
-generate_volcanodata <- function(data) {
-  volcano_data <- list()
-  for (i in 1:length(xVars)) {
-    volcano_data[[i]] <- data %>% filter(xVar == xVars[i]) %>% 
-      mutate(padj = p.adjust(Pval, method = "fdr")) %>%
-      mutate(qval = -log10(padj), 
-             log2fc = Coefficient) %>% 
-      select(Protein, Pval, padj, qval, log2fc) %>% 
-      mutate(diffexpressed = ifelse(log2fc > 0 & qval >= 1,
-                                    yes = "Upregulated", 
-                                    no = ifelse(log2fc < 0 & qval >= 1,
-                                                yes = "Downregulated", no="none")))
-  }
-  return(volcano_data)
-}
 
 ratio_AD_volcanodata <- generate_volcanodata(ratio_AD_summary)
 ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary)
 
-generate_volcanodata_nonpadj <- function(data) {
-  volcano_data <- list()
-  for (i in 1:length(xVars)) {
-    volcano_data[[i]] <- data %>% filter(xVar == xVars[i]) %>% 
-      mutate(padj = Pval) %>%
-      mutate(qval = -log10(padj), 
-             log2fc = Coefficient) %>% 
-      select(Protein, Pval, padj, qval, log2fc) %>% 
-      mutate(diffexpressed = ifelse(log2fc > 0 & qval >= 1,
-                                    yes = "Upregulated", 
-                                    no = ifelse(log2fc < 0 & qval >= 1,
-                                                yes = "Downregulated", no="none")))
-  }
-  return(volcano_data)
-}
 
 ratio_AD_volcanodata_nonpadj <- generate_volcanodata_nonpadj(ratio_AD_summary)
-
-generate_volcanoplot <- function(volcanodata) {
-  volcanoplot <- list()
-  for(i in 1:length(xVars)) {
-    top_genes <- head((volcanodata[[i]])[order(-volcanodata[[i]]$qval), ], 10)
-    volcanoplot[[i]] <- ggplot(volcanodata[[i]], aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
-      geom_point(size = 0.5, alpha = 0.8, na.rm = T) +
-      #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
-      theme_bw(base_size = 16) +
-      theme(legend.position = "none") +
-      #ggtitle(label = paste(str_split(plot_title, '_', simplify = T), sep = "", collapse = " ")) + 
-      xlab("log2 FC") +
-      ylab(expression(-log[10]("q"))) +
-      scale_color_manual(values = c("Upregulated" = "indianred1",
-                                    "Downregulated" = "royalblue1",
-                                    "none" = "grey60")) +
-      theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
-            plot.background = element_rect(fill = "white"),
-            axis.title = element_text(size = 9.5),
-            axis.text = element_text(size = 7),
-            plot.title = element_text(size = 10, hjust = 0.5), 
-            axis.line = element_blank()) + 
-      annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-               label = xVars[i], hjust = 0, size = 4) +
-      geom_text_repel(data = top_genes, aes(label = Protein, vjust = qval, hjust = log2fc), 
-                      size = 3, color = "black", min.segment.length = 0)
-  }
-  
-  gridExtra::grid.arrange(grobs = volcanoplot, ncol = 2)
-}
 
 generate_volcanoplot(ratio_AD_volcanodata)
 generate_volcanoplot(ratio_CO_volcanodata)
@@ -472,18 +282,8 @@ generate_volcanoplot(ratio_AD_volcanodata_nonpadj)
 # Get enrichR pathways 
 albumin_enriched <- enrichr(str_extract(albumin_intersection, "\\w+(?=\\.)"), "ChEA_2022")
 albumin_enriched <- albumin_enriched$ChEA_2022
-
-getTopProteins <- function(volcanodata, regulated) {
-  if (regulated == "up"){
-    temp <- volcanodata[volcanodata$diffexpressed == "Upregulated", ] %>% 
-      arrange(-qval)
-  } 
-  if (regulated == "down") {
-    temp <- volcanodata[volcanodata$diffexpressed == "Downregulated", ] %>% 
-      arrange(-qval)
-  }
-  return(temp)
-}
+albumin_AD_enriched <- enrichr(str_extract(albumin_prots_AD, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
+albumin_CO_enriched <- enrichr(str_extract(albumin_prots_CO, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
 
 ratio_CO_sex_up <- getTopProteins(ratio_CO_volcanodata[[1]], "up")
 ratio_CO_sex_down <- getTopProteins(ratio_CO_volcanodata[[1]], "down")
@@ -494,12 +294,6 @@ ratio_AD_sex_up <- getTopProteins(ratio_AD_volcanodata[[1]], "up")
 ratio_AD_sex_down <- getTopProteins(ratio_AD_volcanodata[[1]], "down")
 ratio_AD_age_up <- getTopProteins(ratio_AD_volcanodata[[2]], "up")
 ratio_AD_age_down <- getTopProteins(ratio_AD_volcanodata[[2]], "down")
-
-enrichVolcanodata <- function(data, db) {
-  enriched <- enrichr(str_extract(data$Protein, "\\w+(?=\\.)"), db)
-  return(enriched)
-}
-
 
 ratio_CO_sex_up_enriched <- enrichVolcanodata(ratio_CO_sex_up, "ChEA_2022")$ChEA_2022
 ratio_CO_sex_down_enriched <- enrichVolcanodata(ratio_CO_sex_down, "ChEA_2022")$ChEA_2022
@@ -518,6 +312,7 @@ ratio_AD_age_down_enriched <- enrichVolcanodata(ratio_AD_age_down, "ChEA_2022")$
 
 # knight before p-adjusted VS stanford volcano plots --> compare enrichR pathways 
 knight_ratio <- CSF_prots_temp_fil[-c(1:3)] / plasma_prots_temp_fil[-c(1:3)]
+knight_all_prots <- colnames(knight_ratio)
 knight_patients <- patientdata_temp
 
 knight_AD_ratio <- knight_ratio[knight_patients$final_status == "AD", ]
@@ -525,22 +320,74 @@ knight_CO_ratio <- knight_ratio[knight_patients$final_status == "CO", ]
 knight_AD_patients <- knight_patients[knight_patients$final_status == "AD", ]
 knight_CO_patients <- knight_patients[knight_patients$final_status == "CO", ]
 
-knight_AD_lmodels <- generate_lmodels(knight_AD_ratio, knight_AD_patients)
-knight_CO_lmodels <- generate_lmodels(knight_CO_ratio, knight_CO_patients)
+knight_AD_lmodels <- generate_lmodels(knight_AD_ratio, knight_AD_patients, c("Sex", "avg_drawage"))
+knight_CO_lmodels <- generate_lmodels(knight_CO_ratio, knight_CO_patients, c("Sex", "avg_drawage"))
 
-knight_AD_lmsummary <- generate_lmsummary(knight_AD_lmodels)
-knight_CO_lmsummary <- generate_lmsummary(knight_CO_lmodels)
+knight_AD_lmsummary <- generate_lmsummary(knight_AD_lmodels, knight_all_prots, c("Male", "Age"))
+knight_CO_lmsummary <- generate_lmsummary(knight_CO_lmodels, knight_all_prots, c("Male", "Age"))
 
-knight_AD_volcanodata <- generate_volcanodata(knight_AD_lmsummary)
-knight_CO_volcanodata <- generate_volcanodata(knight_CO_lmsummary)
+knight_AD_volcanodata <- generate_volcanodata(knight_AD_lmsummary, c("Male", "Age"))
+knight_CO_volcanodata <- generate_volcanodata(knight_CO_lmsummary, c("Male", "Age"))
 
 generate_volcanoplot(knight_AD_volcanodata)
 generate_volcanoplot(knight_CO_volcanodata)
 
 #interaction model bw age and alzheimers disease status (extract CD? score)
-# unified analysis: interaction model bw age and alzheimers disease status (extract CD? score)
+knight_patients_CDR <- plasma_patient_temp[plasma_patient_temp$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
+  select(CDR_at_blood_draw)
+knight_patients_CDR <- knight_patients %>% mutate(CDR = knight_patients_CDR$CDR_at_blood_draw) %>%
+  mutate(Age_CDR = avg_drawage * CDR)
+
+knight_interaction_lmodels <- generate_lmodels(knight_ratio, knight_patients_CDR, c("Sex", "Age_CDR"))
+knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, knight_all_prots, c("Male", "Age*CDR"))
+knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR"))
+generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"))
+
+## compare with combined dataset
+all_interaction_lmodels <- list()
+for(i in 1:ncol(all_ratio)) {
+  all_interaction_lmodels[[i]] <- summary(lm(all_ratio[, i] ~ all_patientdata$Sex 
+                                             + all_patientdata$avg_drawage 
+                                             + relevel(factor(all_patientdata$final_status), ref = "CO")))
+}
+all_prots <- names(all_ratio)
+all_interaction_lmsummary <- generate_lmsummary(all_interaction_lmodels, all_prots, c("Male", "Age", "AD"))
+all_interaction_volcanodata <- generate_volcanodata(all_interaction_lmsummary, c("Male", "Age", "AD"))
+generate_volcanoplot(all_interaction_volcanodata, c("Male", "Age", "AD"))
+
+## enrichment analysis 
+all_ADCO_sex_up <- getTopProteins(all_interaction_volcanodata[[1]], "up")
+all_ADCO_sex_down <- getTopProteins(all_interaction_volcanodata[[1]], "down")
+all_ADCO_age_up <- getTopProteins(all_interaction_volcanodata[[2]], "up")
+all_ADCO_age_down <- getTopProteins(all_interaction_volcanodata[[2]], "down")
+all_ADCO_AD_up <- getTopProteins(all_interaction_volcanodata[[3]], "up")
+all_ADCO_AD_down <- getTopProteins(all_interaction_volcanodata[[3]], "down")
+
+all_ADCO_sex_up_enriched <- enrichVolcanodata(all_ADCO_sex_up, "ChEA_2022")$ChEA_2022
+all_ADCO_sex_down_enriched <- enrichVolcanodata(all_ADCO_sex_down, "ChEA_2022")$ChEA_2022
+all_ADCO_age_up_enriched <- enrichVolcanodata(all_ADCO_age_up, "ChEA_2022")$ChEA_2022
+all_ADCO_age_down_enriched <- enrichVolcanodata(all_ADCO_age_down, "ChEA_2022")$ChEA_2022
+all_ADCO_AD_up_enriched <- enrichVolcanodata(all_ADCO_AD_up, "ChEA_2022")$ChEA_2022
+all_ADCO_AD_down_enriched <- enrichVolcanodata(all_ADCO_AD_down, "ChEA_2022")$ChEA_2022
+
+knight_ADCO_sex_up <- getTopProteins(knight_interaction_volcanodata[[1]], "up")
+knight_ADCO_sex_down <- getTopProteins(knight_interaction_volcanodata[[1]], "down")
+knight_ADCO_int_up <- getTopProteins(knight_interaction_volcanodata[[2]], "up")
+knight_ADCO_int_down <- getTopProteins(knight_interaction_volcanodata[[2]], "down")
+
+knight_ADCO_sex_up_enriched <- enrichVolcanodata(knight_ADCO_sex_up, "ChEA_2022")$ChEA_2022
+knight_ADCO_sex_down_enriched <- enrichVolcanodata(knight_ADCO_sex_down, "ChEA_2022")$ChEA_2022
+knight_ADCO_int_up_enriched <- enrichVolcanodata(knight_ADCO_int_up, "ChEA_2022")$ChEA_2022
+knight_ADCO_int_down_enriched <- enrichVolcanodata(knight_ADCO_int_down, "ChEA_2022")$ChEA_2022
+
+# Clustering and enrichment analysis 
+ratio_AD_clustable <- table(ratio_AD_z_clustnum$cluster)
+ratio_CO_clustable <- table(ratio_CO_z_clustnum$cluster)
+
+ratio_AD_clust_enriched <- enrichClusts(ratio_AD_z_clustnum)
+ratio_CO_clust_enriched <- enrichClusts(ratio_CO_z_clustnum)
 
 
-
-
+# differential sliding window analysis
+sliding_window <- 10
 
