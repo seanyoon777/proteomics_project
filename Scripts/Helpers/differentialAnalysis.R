@@ -61,7 +61,7 @@ generate_volcanodata_nonpadj <- function(data) {
 }
 
 
-generate_volcanoplot <- function(volcanodata) {
+generate_volcanoplot <- function(volcanodata, xVars) {
   volcanoplot <- list()
   for(i in 1:length(xVars)) {
     top_genes <- head((volcanodata[[i]])[order(-volcanodata[[i]]$qval), ], 10)
