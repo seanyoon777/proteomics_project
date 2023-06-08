@@ -10,62 +10,60 @@ get_biodata <- function(path) {
 
 
 # same thing with stanford data? ----
-barcodes <- get_biodata("ADRC/Plasma_ANML/input_DE_HumanSomas_Samples_Only_LOD/CSF_plasma_matched_barcodes.csv")
-CSF_patients <- get_biodata("ADRC/ADRC_Data_Sharing_2023/CSF_metadata_2023-03-04.csv")
-CSF_prots <- get_biodata("ADRC/CSF_MedNorm/input_DE_HumanSoma_SamplesOnly_LOD/CSFProts.log10.noLODFilter.csv")
-plasma_patients <- get_biodata("ADRC/ADRC_Data_Sharing_2023/Plasma_metadata_samplesOnly_2023-03-04.csv")
-plasma_prots <- get_biodata("ADRC/Plasma_ANML/input_DE_HumanSomas_Samples_Only_LOD/plasmaProts.log10.csv")
+stanford_barcodes <- get_biodata("ADRC/Plasma_ANML/input_DE_HumanSomas_Samples_Only_LOD/CSF_plasma_matched_barcodes.csv")
+stanford_CSF_patients <- get_biodata("ADRC/ADRC_Data_Sharing_2023/CSF_metadata_2023-03-04.csv")
+stanford_CSF_prots <- get_biodata("ADRC/CSF_MedNorm/input_DE_HumanSoma_SamplesOnly_LOD/CSFProts.log10.noLODFilter.csv")
+stanford_plasma_patients <- get_biodata("ADRC/ADRC_Data_Sharing_2023/Plasma_metadata_samplesOnly_2023-03-04.csv")
+stanford_plasma_prots <- get_biodata("ADRC/Plasma_ANML/input_DE_HumanSomas_Samples_Only_LOD/plasmaProts.log10.csv")
 
-CSF_patients$Age <- gsub('^"&"$', '', CSF_patients$Age)
-CSF_patients$Age <- as.numeric(CSF_patients$Age)
+stanford_CSF_patients$Age <- gsub('^"&"$', '', stanford_CSF_patients$Age)
+stanford_CSF_patients$Age <- as.numeric(stanford_CSF_patients$Age)
 
-common_prots <- intersect(names(CSF_prots), names(plasma_prots))
-CSF_prots <- data.frame(Barcode = CSF_patients$Barcode, CSF_prots[, common_prots]) 
-plasma_prots <- data.frame(Barcode = plasma_prots$Barcode, plasma_prots[, common_prots])
+stanford_common_prots <- intersect(names(stanford_CSF_prots), names(stanford_plasma_prots))
+stanford_CSF_prots <- data.frame(Barcode = stanford_CSF_patients$Barcode, stanford_CSF_prots[, stanford_common_prots]) 
+stanford_plasma_prots <- data.frame(Barcode = stanford_plasma_prots$Barcode, stanford_plasma_prots[, stanford_common_prots])
 
-CSF_prots_fil <- CSF_prots[CSF_prots$Barcode %in% barcodes$CSF_Barcode, ]
-CSF_patients_fil <- CSF_patients[CSF_patients$Barcode %in% barcodes$CSF_Barcode, ]
-plasma_prots_fil <- plasma_prots %>%
-  filter(Barcode %in% barcodes$Plasma_Barcode) %>% 
-  arrange(match(Barcode, barcodes$Plasma_Barcode)) %>% 
-  slice(order(match(Barcode, barcodes$Plasma_Barcode)))
+stanford_CSF_prots <- stanford_CSF_prots[stanford_CSF_prots$Barcode %in% stanford_barcodes$stanford_CSF_Barcode, ]
+stanford_CSF_patients <- stanford_CSF_patients[stanford_CSF_patients$Barcode %in% stanford_barcodes$CSF_Barcode, ]
+stanford_plasma_prots <- stanford_plasma_prots %>%
+  filter(Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
+  arrange(match(Barcode, stanford_barcodes$Plasma_Barcode)) %>% 
+  slice(order(match(Barcode, stanford_barcodes$Plasma_Barcode)))
 
-age_fil <- plasma_patients %>% 
-  dplyr::select(Age, Barcode) %>% 
-  rename(Plasma_Barcode = Barcode) %>% 
-  filter(Plasma_Barcode %in% barcodes$Plasma_Barcode) %>% 
-  arrange(match(Plasma_Barcode, barcodes$Plasma_Barcode)) %>% 
-  mutate(CSF_Barcode = CSF_patients_fil$Barcode) %>% 
-  dplyr::select(Age, CSF_Barcode, Plasma_Barcode)
-
-patientdata_fil <- plasma_patients %>% 
+stanford_plasma_patients <- stanford_plasma_patients %>% 
   rename(Plasma_Barcode = Barcode, Plasma_Zscore = ConnectivityZscore) %>% 
-  filter(Plasma_Barcode %in% barcodes$Plasma_Barcode) %>% 
-  arrange(match(Plasma_Barcode, barcodes$Plasma_Barcode)) 
+  filter(Plasma_Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
+  arrange(match(Plasma_Barcode, stanford_barcodes$Plasma_Barcode)) 
 
-gendermatch_index <- CSF_patients_fil$Gender == patientdata_fil$Gender
-CSF_patients_fil <- CSF_patients_fil[gendermatch_index, ]
-patientdata_fil <- patientdata_fil[gendermatch_index, ]
-age_fil <- age_fil[gendermatch_index, ]
-CSF_prots_fil <- CSF_prots_fil[gendermatch_index, ]
-plasma_prots_fil <- plasma_prots_fil[gendermatch_index, ]
+stanford_gendermatch_index <- stanford_CSF_patients$Gender == stanford_plasma_patients$Gender
+stanford_CSF_patients <- stanford_CSF_patients[stanford_gendermatch_index, ]
+stanford_plasma_patients <- stanford_plasma_patients[stanford_gendermatch_index, ]
+stanford_CSF_prots <- stanford_CSF_prots[stanford_gendermatch_index, ]
+stanford_plasma_prots <- stanford_plasma_prots[stanford_gendermatch_index, ]
 
-patientdata_fil <- patientdata_fil %>% 
-  mutate(CSF_Barcode = CSF_patients_fil$Barcode, Plasma_drawage = Age, CSF_drawage = CSF_patients_fil$Age, 
-         Plasma_storagedays = Storage_days, CSF_storagedays = CSF_patients_fil$Storage_days,
-         CSF_days = CSF_patients_fil$Storage_days, Plasma_drawdate = strptime(Date.of.draw, format = "%m/%d/%y"), 
-         CSF_drawdate = strptime(CSF_patients_fil$Date_of_CSF_sample, format = "%m/%d/%y"), 
-         Plasma_drawstatus = Diagnosis_group, CSF_drawstatus = CSF_patients_fil$Diagnosis_group) %>% 
+stanford_patients <- stanford_plasma_patients %>% 
+  mutate(CSF_Barcode = stanford_CSF_patients$Barcode, Plasma_drawage = Age, 
+         CSF_drawage = stanford_CSF_patients$Age, 
+         Plasma_storagedays = Storage_days, 
+         CSF_storagedays = stanford_CSF_patients$Storage_days,
+         CSF_days = stanford_CSF_patients$Storage_days, 
+         Plasma_drawdate = strptime(Date.of.draw, format = "%m/%d/%y"), 
+         CSF_drawdate = strptime(stanford_CSF_patients$Date_of_CSF_sample, format = "%m/%d/%y"), 
+         Plasma_drawstatus = Diagnosis_group, 
+         CSF_drawstatus = stanford_CSF_patients$Diagnosis_group) %>% 
   group_by(Plasma_Barcode) %>%
   mutate(avg_drawage = (Plasma_drawage + as.numeric(CSF_drawage)) / 2, 
          drawdate_diff = difftime(Plasma_drawdate, CSF_drawdate, units = "days"), 
          avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>%
-  dplyr::select(Plasma_Barcode, CSF_Barcode, Gender, avg_drawage, Plasma_drawdate, Plasma_drawage, Plasma_drawstatus, 
-                Plasma_storagedays, CSF_drawdate, CSF_drawage, CSF_drawstatus, CSF_storagedays, drawdate_diff, avg_drawdate) %>%
+  mutate(Plasma_drawdate2 = as.numeric(difftime(today(), Plasma_drawdate)), bias = 1) %>%
+  dplyr::select(Plasma_Barcode, CSF_Barcode, Gender, avg_drawage, Plasma_drawdate, 
+                Plasma_drawage, Plasma_drawstatus, Plasma_storagedays, CSF_drawdate, 
+                CSF_drawage, CSF_drawstatus, CSF_storagedays, drawdate_diff,
+                Plasma_drawdate2, avg_drawdate, bias) %>%
   as.data.frame()
 
 # actually drawdate diff is all below 90!!! we can proceed without setting a time window. 
-patientdata_fil <- patientdata_fil %>% 
+stanford_patients <- stanford_patients %>% 
   mutate(Plasma_drawstatus = 
            if_else(Plasma_drawstatus == "ADMCI", "AD", Plasma_drawstatus)) %>% 
   mutate(CSF_drawstatus = 
@@ -77,45 +75,46 @@ patientdata_fil <- patientdata_fil %>%
   mutate(final_status = 
            if_else(Plasma_drawdate < CSF_drawdate, Plasma_drawstatus, CSF_drawstatus))
 
-patientdata_AD_index <- patientdata_fil$final_status == "AD" 
-patientdata_CO_index <- patientdata_fil$final_status == "CO"
-patientdata_AD_index[is.na(patientdata_AD_index)] <- FALSE
-patientdata_CO_index[is.na(patientdata_CO_index)] <- FALSE
-patientdata_index <- patientdata_AD_index | patientdata_CO_index
+stanford_AD_index <- stanford_patients$final_status == "AD" 
+stanford_CO_index <- stanford_patients$final_status == "CO"
+stanford_AD_index[is.na(stanford_AD_index)] <- FALSE
+stanford_CO_index[is.na(stanford_CO_index)] <- FALSE
+stanford_index <- stanford_AD_index | stanford_CO_index
 
 # clean WashU data 
-plasma_meta_temp <- get_biodata("WashU_ADRC/Plasma/WashU_Plasma_SomaScan7K_sample_metadata.csv")
-plasma_prots_temp <- get_biodata("WashU_ADRC/Plasma/WashU_Plasma_SomaScan7K_sample_protein_expression.csv")
-plasma_patient_temp <- read.xlsx(paste(dir, "WashU_ADRC/Plasma/Plasma_ BasicDemo.xlsx", sep = "/"))
-CSF_meta_temp <- get_biodata("WashU_ADRC/CSF/WashU_CSF_SomaScan7K_sample_metadata.csv")
-CSF_prots_temp <- get_biodata("WashU_ADRC/CSF/WashU_CSF_SomaScan7K_sample_protein_expression.csv")
-CSF_patient_temp <- read.xlsx(paste(dir, "WashU_ADRC/CSF/CSF_BasicDemo.xlsx", sep = "/"))
+knight_plasma_meta <- get_biodata("WashU_ADRC/Plasma/WashU_Plasma_SomaScan7K_sample_metadata.csv")
+knight_plasma_prots <- get_biodata("WashU_ADRC/Plasma/WashU_Plasma_SomaScan7K_sample_protein_expression.csv")
+knight_plasma_patients <- read.xlsx(paste(dir, "WashU_ADRC/Plasma/Plasma_ BasicDemo.xlsx", sep = "/"))
+knight_CSF_meta <- get_biodata("WashU_ADRC/CSF/WashU_CSF_SomaScan7K_sample_metadata.csv")
+knight_CSF_prots <- get_biodata("WashU_ADRC/CSF/WashU_CSF_SomaScan7K_sample_protein_expression.csv")
+knight_CSF_patients <- read.xlsx(paste(dir, "WashU_ADRC/CSF/CSF_BasicDemo.xlsx", sep = "/"))
 
-patientmeta_temp <- get_biodata("WashU_ADRC/commonfile/WashU_ADNI_demographic.csv")
+knight_patients_meta <- get_biodata("WashU_ADRC/commonfile/WashU_ADNI_demographic.csv")
 
-plasma_prots_temp[4:ncol(plasma_prots_temp)] <- log10(plasma_prots_temp[4:ncol(plasma_prots_temp)])
-CSF_prots_temp[4:ncol(CSF_prots_temp)] <- log10(CSF_prots_temp[4:ncol(CSF_prots_temp)])
+knight_plasma_prots[4:ncol(knight_plasma_prots)] <- log10(knight_plasma_prots[4:ncol(knight_plasma_prots)])
+knight_CSF_prots[4:ncol(knight_CSF_prots)] <- log10(knight_CSF_prots[4:ncol(knight_CSF_prots)])
 
 protMeta <- read_csv("/labs/twc/jarod/Data/ADRC/Plasma_ANML/input_DE_HumanSomas_Samples_Only_LOD/ProteinMetadata_with_LOD.csv", col_types = )
 protMeta$SeqId = str_replace(protMeta$SeqId, "-", ".")
 protMeta <- filter(protMeta, (Organism == "Human" | Organism == "HIV-1" | Organism == "HIV-2") & Type == "Protein")
-all_prots_ID <- names(plasma_prots_temp)[4:ncol(plasma_prots_temp)] 
+all_prots_ID <- names(knight_plasma_prots)[4:ncol(knight_plasma_prots)] 
 all_prots <- str_remove(all_prots_ID, "^X")
 my_order <- match(protMeta$SeqId, all_prots)
 all_prots <- protMeta$Key_2
 nprots <- length(all_prots)
 
-plasma_prots_temp <- plasma_prots_temp[c(1:3, 3 + my_order)]
-colnames(plasma_prots_temp) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
+knight_plasma_prots <- knight_plasma_prots[c(1:3, 3 + my_order)]
+colnames(knight_plasma_prots) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
 
-CSF_prots_temp <- CSF_prots_temp[c(1:3, 3 + my_order)]
-colnames(CSF_prots_temp) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
+knight_CSF_prots <- knight_CSF_prots[c(1:3, 3 + my_order)]
+colnames(knight_CSF_prots) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
 
 
-all_prots <- intersect(names(plasma_prots_temp)[4:ncol(plasma_prots_temp)], names(plasma_prots)[4:ncol(plasma_prots)])
+all_prots <- intersect(names(knight_plasma_prots)[4:ncol(knight_plasma_prots)], 
+                       names(knight_plasma_prots)[4:ncol(knight_plasma_prots)])
 nprots <- length(all_prots)
 
-plasma_patient_temp <- plasma_patient_temp %>% 
+knight_plasma_patients <- knight_plasma_patients %>% 
   mutate(final_cc_status.updated = 
            if_else(final_cc_status.updated == "Neuropath Confirmed AD", 
                    "AD", final_cc_status.updated)) %>% 
@@ -126,7 +125,7 @@ plasma_patient_temp <- plasma_patient_temp %>%
                                convertToDateTime(as.numeric(DateOfBirth)))) %>% 
   mutate(drawdate = convertToDateTime(as.numeric(drawdate)))
 
-CSF_patient_temp <- CSF_patient_temp %>% 
+knight_CSF_patients <- knight_CSF_patients %>% 
   mutate(Last.status = 
            if_else(Last.status == "Neuropath Confirmed AD", 
                    "AD", Last.status)) %>% 
@@ -135,25 +134,25 @@ CSF_patient_temp <- CSF_patient_temp %>%
                    "CO", Last.status)) %>% 
   mutate(DrawDate = convertToDateTime(DrawDate))
 
-plasma_meta_temp <- arrange(plasma_meta_temp, PA_DB_UID)
-plasma_prots_temp <- arrange(plasma_prots_temp, PA_DB_UID)
-plasma_patient_temp <- arrange(plasma_patient_temp, PA_DB_UID)
-CSF_meta_temp <- arrange(CSF_meta_temp, PA_DB_UID)
-CSF_prots_temp <- arrange(CSF_prots_temp, PA_DB_UID)
-CSF_patient_temp <- arrange(CSF_patient_temp, PA_DB_UID)
+knight_plasma_meta <- arrange(knight_plasma_meta, PA_DB_UID)
+knight_plasma_prots <- arrange(knight_plasma_prots, PA_DB_UID)
+knight_plasma_patients <- arrange(knight_plasma_patients, PA_DB_UID)
+knight_CSF_meta <- arrange(knight_CSF_meta, PA_DB_UID)
+knight_CSF_prots <- arrange(knight_CSF_prots, PA_DB_UID)
+knight_CSF_patients <- arrange(knight_CSF_patients, PA_DB_UID)
 
-common_ID <- intersect(CSF_patient_temp$PA_DB_UID, plasma_patient_temp$PA_DB_UID) %>% 
+knight_common_ID <- intersect(knight_CSF_patients$PA_DB_UID, knight_plasma_patients$PA_DB_UID) %>% 
   data.frame(PA_DB_UID = .) %>% arrange(PA_DB_UID) 
-common_ID <- common_ID$PA_DB_UID
+knight_common_ID <- knight_common_ID$PA_DB_UID
 
-plasma_meta_temp <- plasma_meta_temp[plasma_meta_temp$PA_DB_UID %in% common_ID, ]
-plasma_prots_temp <- plasma_prots_temp[plasma_prots_temp$PA_DB_UID %in% common_ID, ]
-plasma_patient_temp <- plasma_patient_temp[plasma_patient_temp$PA_DB_UID %in% common_ID, ]
-CSF_meta_temp <- CSF_meta_temp[CSF_meta_temp$PA_DB_UID %in% common_ID, ]
-CSF_prots_temp <- CSF_prots_temp[CSF_prots_temp$PA_DB_UID %in% common_ID, ]
-CSF_patient_temp <- CSF_patient_temp[CSF_patient_temp$PA_DB_UID %in% common_ID, ]
+knight_plasma_meta <- knight_plasma_meta[knight_plasma_meta$PA_DB_UID %in% knight_common_ID, ]
+knight_plasma_prots <- knight_plasma_prots[knight_plasma_prots$PA_DB_UID %in% knight_common_ID, ]
+knight_plasma_patients <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_common_ID, ]
+knight_CSF_meta <- knight_CSF_meta[knight_CSF_meta$PA_DB_UID %in% knight_common_ID, ]
+knight_CSF_prots <- knight_CSF_prots[knight_CSF_prots$PA_DB_UID %in% knight_common_ID, ]
+knight_CSF_patients <- knight_CSF_patients[knight_CSF_patients$PA_DB_UID %in% knight_common_ID, ]
 
-patientdata_temp_fil <- merge(CSF_patient_temp, plasma_patient_temp, by = "PA_DB_UID") %>% 
+knight_patients <- merge(knight_CSF_patients, knight_plasma_patients, by = "PA_DB_UID") %>% 
   select(PA_DB_UID = PA_DB_UID, Sex = gender, DOB = DateOfBirth, 
          Plasma_drawdate = drawdate, Plasma_drawage = Age_at_blood_draw.updated, 
          Plasma_drawstatus = final_cc_status.updated, 
@@ -162,18 +161,19 @@ patientdata_temp_fil <- merge(CSF_patient_temp, plasma_patient_temp, by = "PA_DB
   group_by(PA_DB_UID) %>% 
   mutate(drawdate_diff = abs(difftime(Plasma_drawdate, CSF_drawdate, units = "days")), 
          avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>% 
-  mutate(storage_days = as.numeric(difftime(today(), avg_drawdate, units = "days"))) %>% 
+  mutate(storage_days = as.numeric(difftime(today(), avg_drawdate, units = "days")), bias = 0) %>% 
   as.data.frame() 
 
 date_window <- 120
-date_index <- patientdata_temp_fil$drawdate_diff <= date_window
-CSF_prots_temp_fil <- CSF_prots_temp[date_index, ]
-plasma_prots_temp_fil <- plasma_prots_temp[date_index, ]
+knight_date_index <- knight_patients$drawdate_diff <= date_window
+knight_CSF_prots <- knight_CSF_prots[knight_date_index, ]
+knight_plasma_prots <- knight_plasma_prots[knight_date_index, ]
 
-patientdata_temp <- patientdata_temp_fil[date_index, ] %>% 
+knight_patients <- knight_patients[knight_date_index, ] %>% 
   mutate(final_status = ifelse(Plasma_drawdate < CSF_drawdate, CSF_drawstatus, Plasma_drawstatus), 
-         avg_drawage = abs(Plasma_drawage + CSF_drawage) / 2) %>% 
-  select(PA_DB_UID, Sex, avg_drawage, drawdate_diff, Plasma_drawdate, CSF_drawdate, final_status, storage_days) 
+         avg_drawage = abs(Plasma_drawage + CSF_drawage) / 2, storage_days2 = storage_days) %>% 
+  select(PA_DB_UID, Sex, avg_drawage, drawdate_diff, Plasma_drawdate, CSF_drawdate, 
+         final_status, storage_days, storage_days2, bias) 
 
 
 # get rid of non AD or COs
