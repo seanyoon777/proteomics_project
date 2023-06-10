@@ -1,7 +1,6 @@
 
 generate_lmodels <- function(protdata, patientdata, colnames) {
   lmodels <- list()
-  all_prots <- ncol(protdata)
   for(i in 1:ncol(protdata)) {
     new_patientdata <- patientdata[colnames] %>% mutate(protein = protdata[, i])
     lmodels[[i]] <- summary(lm(protein ~ ., data = new_patientdata))
@@ -61,7 +60,7 @@ generate_volcanodata_nonpadj <- function(data) {
 }
 
 
-generate_volcanoplot <- function(volcanodata, xVars) {
+generate_volcanoplot <- function(volcanodata, xVars, ncols) {
   volcanoplot <- list()
   for(i in 1:length(xVars)) {
     top_genes <- head((volcanodata[[i]])[order(-volcanodata[[i]]$qval), ], 10)
@@ -76,19 +75,20 @@ generate_volcanoplot <- function(volcanodata, xVars) {
       scale_color_manual(values = c("Upregulated" = "indianred1",
                                     "Downregulated" = "royalblue1",
                                     "none" = "grey60")) +
+      annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
+               label = xVars[i], hjust = 0, size = 4) +
+      geom_text_repel(data = top_genes, aes(label = Protein, vjust = qval, hjust = log2fc),
+                      size = 3, color = "black") + 
       theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
             plot.background = element_rect(fill = "white"),
             axis.title = element_text(size = 9.5),
             axis.text = element_text(size = 7),
             plot.title = element_text(size = 10, hjust = 0.5), 
-            axis.line = element_blank()) + 
-      annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-               label = xVars[i], hjust = 0, size = 4) +
-      geom_text_repel(data = top_genes, aes(label = Protein, vjust = qval, hjust = log2fc),
-                      size = 3, color = "black")
+            axis.line = element_blank(),
+            text = element_text(family = "Arial"))
   }
   
-  gridExtra::grid.arrange(grobs = volcanoplot, ncol = 2)
+  gridExtra::grid.arrange(grobs = volcanoplot, ncol = ncols)
 }
 
 getTopProteins <- function(volcanodata, regulated) {
