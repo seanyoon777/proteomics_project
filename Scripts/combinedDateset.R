@@ -1,7 +1,10 @@
+rm(list = ls())
+
 source("Scripts/Helpers/init.R")
 source("Scripts/Helpers/differentialAnalysis.R")
 source("Scripts/Helpers/hierClust.R")
 source("Scripts/Helpers/demoHist.R")
+source("Scripts/Helpers/enrichAnalysis.R")
 
 dir <- "/labs/twc/jarod/Data"
 get_biodata <- function(path) {
@@ -19,21 +22,28 @@ stanford_plasma_prots <- get_biodata("ADRC/Plasma_ANML/input_DE_HumanSomas_Sampl
 stanford_CSF_patients$Age <- gsub('^"&"$', '', stanford_CSF_patients$Age)
 stanford_CSF_patients$Age <- as.numeric(stanford_CSF_patients$Age)
 
-stanford_common_prots <- intersect(names(stanford_CSF_prots), names(stanford_plasma_prots))
-stanford_CSF_prots <- data.frame(Barcode = stanford_CSF_patients$Barcode, stanford_CSF_prots[, stanford_common_prots]) 
-stanford_plasma_prots <- data.frame(Barcode = stanford_plasma_prots$Barcode, stanford_plasma_prots[, stanford_common_prots])
+stanford_plasma_prots <- stanford_plasma_prots[stanford_plasma_prots$Barcode %in% stanford_plasma_patients$Barcode, ]
+stanford_CSF_prots <- data.frame(Barcode = stanford_CSF_patients$Barcode, stanford_CSF_prots)
 
-stanford_CSF_prots <- stanford_CSF_prots[stanford_CSF_prots$Barcode %in% stanford_barcodes$stanford_CSF_Barcode, ]
+stanford_common_prots <- intersect(names(stanford_CSF_prots), names(stanford_plasma_prots))
+
+stanford_plasma_prots <- stanford_plasma_prots[stanford_common_prots]
+stanford_CSF_prots <- stanford_CSF_prots[stanford_common_prots]
+
+stanford_plasma_prots <- stanford_plasma_prots[stanford_plasma_prots$Barcode %in% stanford_barcodes$Plasma_Barcode, ]
+stanford_plasma_patients <- stanford_plasma_patients[stanford_plasma_patients$Barcode %in% stanford_barcodes$Plasma_Barcode, ]
+stanford_CSF_prots <- stanford_CSF_prots[stanford_CSF_prots$Barcode %in% stanford_barcodes$CSF_Barcode, ]
 stanford_CSF_patients <- stanford_CSF_patients[stanford_CSF_patients$Barcode %in% stanford_barcodes$CSF_Barcode, ]
+
 stanford_plasma_prots <- stanford_plasma_prots %>%
   filter(Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
   arrange(match(Barcode, stanford_barcodes$Plasma_Barcode)) %>% 
   slice(order(match(Barcode, stanford_barcodes$Plasma_Barcode)))
 
-stanford_plasma_patients <- stanford_plasma_patients %>% 
-  rename(Plasma_Barcode = Barcode, Plasma_Zscore = ConnectivityZscore) %>% 
-  filter(Plasma_Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
-  arrange(match(Plasma_Barcode, stanford_barcodes$Plasma_Barcode)) 
+stanford_plasma_patients <- stanford_plasma_patients %>%
+  filter(Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
+  arrange(match(Barcode, stanford_barcodes$Plasma_Barcode)) %>% 
+  slice(order(match(Barcode, stanford_barcodes$Plasma_Barcode)))
 
 stanford_gendermatch_index <- stanford_CSF_patients$Gender == stanford_plasma_patients$Gender
 stanford_CSF_patients <- stanford_CSF_patients[stanford_gendermatch_index, ]
@@ -42,8 +52,8 @@ stanford_CSF_prots <- stanford_CSF_prots[stanford_gendermatch_index, ]
 stanford_plasma_prots <- stanford_plasma_prots[stanford_gendermatch_index, ]
 
 stanford_patients <- stanford_plasma_patients %>% 
-  mutate(CSF_Barcode = stanford_CSF_patients$Barcode, Plasma_drawage = Age, 
-         CSF_drawage = stanford_CSF_patients$Age, 
+  mutate(Plasma_Barcode = Barcode, CSF_Barcode = stanford_CSF_patients$Barcode, 
+         Plasma_drawage = Age, CSF_drawage = stanford_CSF_patients$Age, 
          Plasma_storagedays = Storage_days, 
          CSF_storagedays = stanford_CSF_patients$Storage_days,
          CSF_days = stanford_CSF_patients$Storage_days, 
@@ -55,11 +65,11 @@ stanford_patients <- stanford_plasma_patients %>%
   mutate(avg_drawage = (Plasma_drawage + as.numeric(CSF_drawage)) / 2, 
          drawdate_diff = difftime(Plasma_drawdate, CSF_drawdate, units = "days"), 
          avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>%
-  mutate(Plasma_drawdate2 = as.numeric(difftime(today(), Plasma_drawdate)), bias = 1) %>%
+  mutate(Plasma_drawdate2 = as.numeric(difftime(today(), Plasma_drawdate)), batch_effect = 1) %>%
   dplyr::select(Plasma_Barcode, CSF_Barcode, Gender, avg_drawage, Plasma_drawdate, 
                 Plasma_drawage, Plasma_drawstatus, Plasma_storagedays, CSF_drawdate, 
                 CSF_drawage, CSF_drawstatus, CSF_storagedays, drawdate_diff,
-                Plasma_drawdate2, avg_drawdate, bias) %>%
+                Plasma_drawdate2, avg_drawdate, batch_effect) %>%
   as.data.frame()
 
 # actually drawdate diff is all below 90!!! we can proceed without setting a time window. 
@@ -73,7 +83,7 @@ stanford_patients <- stanford_patients %>%
   mutate(CSF_drawstatus = 
            if_else(CSF_drawstatus == "HC", "CO", CSF_drawstatus)) %>% 
   mutate(final_status = 
-           if_else(Plasma_drawdate < CSF_drawdate, Plasma_drawstatus, CSF_drawstatus))
+           if_else(Plasma_drawdate < CSF_drawdate, CSF_drawstatus, Plasma_drawstatus))
 
 stanford_AD_index <- stanford_patients$final_status == "AD" 
 stanford_CO_index <- stanford_patients$final_status == "CO"
@@ -161,7 +171,7 @@ knight_patients <- merge(knight_CSF_patients, knight_plasma_patients, by = "PA_D
   group_by(PA_DB_UID) %>% 
   mutate(drawdate_diff = abs(difftime(Plasma_drawdate, CSF_drawdate, units = "days")), 
          avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>% 
-  mutate(storage_days = as.numeric(difftime(today(), avg_drawdate, units = "days")), bias = 0) %>% 
+  mutate(storage_days = as.numeric(difftime(today(), Plasma_drawdate, units = "days")), batch_effect = 0) %>% 
   as.data.frame() 
 
 date_window <- 120
@@ -173,30 +183,32 @@ knight_patients <- knight_patients[knight_date_index, ] %>%
   mutate(final_status = ifelse(Plasma_drawdate < CSF_drawdate, CSF_drawstatus, Plasma_drawstatus), 
          avg_drawage = abs(Plasma_drawage + CSF_drawage) / 2, storage_days2 = storage_days) %>% 
   select(PA_DB_UID, Sex, avg_drawage, drawdate_diff, Plasma_drawdate, CSF_drawdate, 
-         final_status, storage_days, storage_days2, bias) 
+         final_status, storage_days, storage_days2, batch_effect) 
 
 
 # get rid of non AD or COs
-knight_index <- patientdata_temp$final_status == "AD" | patientdata_temp$final_status == "CO" 
-stanford_index <- patientdata_fil$final_status == "AD" | patientdata_fil$final_status == "CO"
+knight_index <- knight_patients$final_status == "AD" | knight_patients$final_status == "CO" 
+stanford_index <- stanford_patients$final_status == "AD" | stanford_patients$final_status == "CO"
 
-patientdata_temp <- patientdata_temp[knight_index, ]
-patientdata_fil <- patientdata_fil[stanford_index, ]
-plasma_prots_temp_fil <- plasma_prots_temp_fil[knight_index, ]
-plasma_prots_fil <- plasma_prots_fil[stanford_index, ]
-CSF_prots_temp_fil <- CSF_prots_temp_fil[knight_index, ]
-CSF_prots_fil <- CSF_prots_fil[stanford_index, ]
+knight_patients <- knight_patients[knight_index, ]
+stanford_patients <- stanford_patients[stanford_index, ]
+knight_plasma_prots <- knight_plasma_prots[knight_index, ]
+stanford_plasma_prots <- stanford_plasma_prots[stanford_index, ]
+knight_CSF_prots <- knight_CSF_prots[knight_index, ]
+stanford_CSF_prots <- stanford_CSF_prots[stanford_index, ]
 
-all_patientdata <- bind_rows(patientdata_fil %>% mutate(Sex = Gender, drawdate_diff = abs(drawdate_diff)) %>% 
-                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff), 
-                             patientdata_temp %>% 
-                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff))
-all_CSF <- bind_rows(CSF_prots_fil[-c(1:3)], CSF_prots_temp_fil[all_prots])
-all_plasma <- bind_rows(plasma_prots_fil[-c(1:3)], plasma_prots_temp_fil[all_prots])
+all_patientdata <- bind_rows(stanford_patients %>% 
+                               mutate(Sex = Gender, drawdate_diff = abs(drawdate_diff)) %>% 
+                               mutate(storage_days = Plasma_drawdate2) %>% 
+                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff, 
+                                             storage_days, batch_effect), 
+                             knight_patients %>% 
+                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff, 
+                                             storage_days, batch_effect))
 
-all_CSF <- all_CSF[!is.na(all_patientdata$Sex), ]
-all_plasma <- all_plasma[!is.na(all_patientdata$Sex), ]
-all_patientdata <- all_patientdata[!is.na(all_patientdata$Sex), ]
+all_prots <- intersect(names(stanford_CSF_prots), names(knight_CSF_prots))
+all_CSF <- bind_rows(stanford_CSF_prots[all_prots], knight_CSF_prots[all_prots])
+all_plasma <- bind_rows(stanford_plasma_prots[all_prots], knight_plasma_prots[all_prots])
 
 AD_index <- all_patientdata$final_status == "AD"
 CO_index <- all_patientdata$final_status == "CO"
@@ -260,50 +272,76 @@ albumin_prots_CO <-ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == albumin_cl
 albumin_intersection <- intersect(albumin_prots_AD, albumin_prots_CO)
 
 # stratified analysis: remake the volcano plots 
-ratio_AD_models <- generate_lmodels(all_ratio_AD, all_patientdata_AD)
-ratio_CO_models <- generate_lmodels(all_ratio_CO, all_patientdata_CO)
+xVars <- c("Sex", "avg_drawage", "drawdate_diff", "storage_days", "batch_effect")
+ratio_AD_models <- generate_lmodels(all_ratio_AD, all_patientdata_AD, xVars)
+ratio_CO_models <- generate_lmodels(all_ratio_CO, all_patientdata_CO, xVars)
 
-ratio_AD_summary <- generate_lmsummary(ratio_AD_models)
-ratio_CO_summary <- generate_lmsummary(ratio_CO_models)
+xLabs <- c("Male", "Age", "Drawdate difference", "Storage days", "Study bias")
+ratio_AD_summary <- generate_lmsummary(ratio_AD_models, colnames(all_ratio), xLabs)
+ratio_CO_summary <- generate_lmsummary(ratio_CO_models, colnames(all_ratio), xLabs)
 
-xVars <- c("Male", "Age")
-
-ratio_AD_volcanodata <- generate_volcanodata(ratio_AD_summary)
-ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary)
+ratio_AD_volcanodata <- generate_volcanodata(ratio_AD_summary, xLabs)
+ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary, xLabs)
 
 
 ratio_AD_volcanodata_nonpadj <- generate_volcanodata_nonpadj(ratio_AD_summary)
 
-generate_volcanoplot(ratio_AD_volcanodata)
-generate_volcanoplot(ratio_CO_volcanodata)
-generate_volcanoplot(ratio_AD_volcanodata_nonpadj)  
+xLabs <- c("Male", "Age")
+generate_volcanoplot(ratio_AD_volcanodata, xLabs, 3)
+generate_volcanoplot(ratio_CO_volcanodata, xLabs, 3)
+generate_volcanoplot(ratio_AD_volcanodata_nonpadj, xLabs, 3)
 
+xVars <- c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect")
+ratio_models <- list()
+for(i in 1:ncol(all_ratio)) {
+  ratio_models[[i]] <- summary(lm(all_ratio[, i] ~ all_patientdata$Sex + all_patientdata$avg_drawage + 
+                               relevel(factor(all_patientdata$final_status), ref = "CO") + 
+                               all_patientdata$drawdate_diff + 
+                               all_patientdata$storage_days + 
+                               all_patientdata$batch_effect))
+}
+xLabs <- c("Male", "Age", "AD", "Drawdate difference", "storage days", "Study bias")
+ratio_summary <- generate_lmsummary(ratio_models, colnames(all_ratio), xLabs)
+ratio_volcanodata <- generate_volcanodata(ratio_summary, xLabs)
+generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3)
+
+xVars <- c("sex", "age", "AD", "drawdateDiff", "storageDays", "studyBias")
+for(i in 1:6) {
+  upProteins <- getTopProteins(ratio_volcanodata[[i]], "up")
+  downProteins <- getTopProteins(ratio_volcanodata[[i]], "down")
+  upEnriched <- enrichVolcanodata(upProteins, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_ADCOCombined/combinedData_", xVars[i], "_upRegulated.csv"))
+  downEnriched <- enrichVolcanodata(downProteins, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_ADCOCombined/combinedData_", xVars[i], "_downRegulated.csv"))
+}
 
 # Get enrichR pathways 
 albumin_enriched <- enrichr(str_extract(albumin_intersection, "\\w+(?=\\.)"), "ChEA_2022")
 albumin_enriched <- albumin_enriched$ChEA_2022
 albumin_AD_enriched <- enrichr(str_extract(albumin_prots_AD, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
 albumin_CO_enriched <- enrichr(str_extract(albumin_prots_CO, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
+write.csv(albumin_AD_enriched, paste0(getwd(), "/Data/Cluster/albumin_AD.csv"))
+write.csv(albumin_CO_enriched, paste0(getwd(), "/Data/Cluster/albumin_CO.csv"))
 
-ratio_CO_sex_up <- getTopProteins(ratio_CO_volcanodata[[1]], "up")
-ratio_CO_sex_down <- getTopProteins(ratio_CO_volcanodata[[1]], "down")
-ratio_CO_age_up <- getTopProteins(ratio_CO_volcanodata[[2]], "up")
-ratio_CO_age_down <- getTopProteins(ratio_CO_volcanodata[[2]], "down")
+xVars <- c("sex", "age", "drawdateDiff", "storageDays", "studyBias")
+for(i in 1:5) {
+  upProteinsCO <- getTopProteins(ratio_CO_volcanodata[[i]], "up")
+  downProteinsCO <- getTopProteins(ratio_CO_volcanodata[[i]], "down")
+  upEnriched <- enrichVolcanodata(upProteinsCO, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_CO/combinedData_CO_", xVars[i], "_upRegulated.csv"))
+  downEnriched <- enrichVolcanodata(downProteinsCO, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_CO/combinedData_CO_", xVars[i], "_downRegulated.csv"))
+  
+  upProteinsAD <- getTopProteins(ratio_AD_volcanodata[[i]], "up")
+  downProteinsAD <- getTopProteins(ratio_AD_volcanodata[[i]], "down")
+  upEnriched <- enrichVolcanodata(upProteinsAD, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_AD/combinedData_AD_", xVars[i], "_upRegulated.csv"))
+  downEnriched <- enrichVolcanodata(downProteinsAD, "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_AD/combinedData_AD_", xVars[i], "_downRegulated.csv"))
+}
 
-ratio_AD_sex_up <- getTopProteins(ratio_AD_volcanodata[[1]], "up")
-ratio_AD_sex_down <- getTopProteins(ratio_AD_volcanodata[[1]], "down")
-ratio_AD_age_up <- getTopProteins(ratio_AD_volcanodata[[2]], "up")
-ratio_AD_age_down <- getTopProteins(ratio_AD_volcanodata[[2]], "down")
 
-ratio_CO_sex_up_enriched <- enrichVolcanodata(ratio_CO_sex_up, "ChEA_2022")$ChEA_2022
-ratio_CO_sex_down_enriched <- enrichVolcanodata(ratio_CO_sex_down, "ChEA_2022")$ChEA_2022
-ratio_CO_age_up_enriched <- enrichVolcanodata(ratio_CO_age_up, "ChEA_2022")$ChEA_2022
-ratio_CO_age_down_enriched <- enrichVolcanodata(ratio_CO_age_down, "ChEA_2022")$ChEA_2022
 
-ratio_AD_sex_up_enriched <- enrichVolcanodata(ratio_AD_sex_up, "ChEA_2022")$ChEA_2022
-ratio_AD_sex_down_enriched <- enrichVolcanodata(ratio_AD_sex_down, "ChEA_2022")$ChEA_2022
-ratio_AD_age_up_enriched <- enrichVolcanodata(ratio_AD_age_up, "ChEA_2022")$ChEA_2022
-ratio_AD_age_down_enriched <- enrichVolcanodata(ratio_AD_age_down, "ChEA_2022")$ChEA_2022
 
 
 # cluster preservation analysis 
@@ -333,15 +371,27 @@ generate_volcanoplot(knight_AD_volcanodata)
 generate_volcanoplot(knight_CO_volcanodata)
 
 #interaction model bw age and alzheimers disease status (extract CD? score)
-knight_patients_CDR <- plasma_patient_temp[plasma_patient_temp$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
+knight_patients_CDR <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
   select(CDR_at_blood_draw)
 knight_patients_CDR <- knight_patients %>% mutate(CDR = knight_patients_CDR$CDR_at_blood_draw) %>%
   mutate(Age_CDR = avg_drawage * CDR)
-
+knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
+knight_all_prots <- names(knight_ratio)
 knight_interaction_lmodels <- generate_lmodels(knight_ratio, knight_patients_CDR, c("Sex", "Age_CDR"))
 knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, knight_all_prots, c("Male", "Age*CDR"))
 knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR"))
-generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"))
+generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2)
+
+xVars <- c("Male", "Age*CDR")
+for(i in 1:2) {
+  upEnriched <- enrichVolcanodata(
+    getTopProteins(knight_interaction_volcanodata[[i]], "up"), "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/Interaction_model/interaction_", xVars[i], "_upRegulated.csv"))
+  upEnriched <- enrichVolcanodata(
+    getTopProteins(knight_interaction_volcanodata[[i]], "down"), "ChEA_2022")$ChEA_2022
+  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/Interaction_model/interaction_", xVars[i], "_downRegulated.csv"))
+}
+
 
 ## compare with combined dataset
 all_interaction_lmodels <- list()
@@ -355,31 +405,6 @@ all_interaction_lmsummary <- generate_lmsummary(all_interaction_lmodels, all_pro
 all_interaction_volcanodata <- generate_volcanodata(all_interaction_lmsummary, c("Male", "Age", "AD"))
 generate_volcanoplot(all_interaction_volcanodata, c("Male", "Age", "AD"))
 
-## enrichment analysis 
-all_ADCO_sex_up <- getTopProteins(all_interaction_volcanodata[[1]], "up")
-all_ADCO_sex_down <- getTopProteins(all_interaction_volcanodata[[1]], "down")
-all_ADCO_age_up <- getTopProteins(all_interaction_volcanodata[[2]], "up")
-all_ADCO_age_down <- getTopProteins(all_interaction_volcanodata[[2]], "down")
-all_ADCO_AD_up <- getTopProteins(all_interaction_volcanodata[[3]], "up")
-all_ADCO_AD_down <- getTopProteins(all_interaction_volcanodata[[3]], "down")
-
-all_ADCO_sex_up_enriched <- enrichVolcanodata(all_ADCO_sex_up, "ChEA_2022")$ChEA_2022
-all_ADCO_sex_down_enriched <- enrichVolcanodata(all_ADCO_sex_down, "ChEA_2022")$ChEA_2022
-all_ADCO_age_up_enriched <- enrichVolcanodata(all_ADCO_age_up, "ChEA_2022")$ChEA_2022
-all_ADCO_age_down_enriched <- enrichVolcanodata(all_ADCO_age_down, "ChEA_2022")$ChEA_2022
-all_ADCO_AD_up_enriched <- enrichVolcanodata(all_ADCO_AD_up, "ChEA_2022")$ChEA_2022
-all_ADCO_AD_down_enriched <- enrichVolcanodata(all_ADCO_AD_down, "ChEA_2022")$ChEA_2022
-
-knight_ADCO_sex_up <- getTopProteins(knight_interaction_volcanodata[[1]], "up")
-knight_ADCO_sex_down <- getTopProteins(knight_interaction_volcanodata[[1]], "down")
-knight_ADCO_int_up <- getTopProteins(knight_interaction_volcanodata[[2]], "up")
-knight_ADCO_int_down <- getTopProteins(knight_interaction_volcanodata[[2]], "down")
-
-knight_ADCO_sex_up_enriched <- enrichVolcanodata(knight_ADCO_sex_up, "ChEA_2022")$ChEA_2022
-knight_ADCO_sex_down_enriched <- enrichVolcanodata(knight_ADCO_sex_down, "ChEA_2022")$ChEA_2022
-knight_ADCO_int_up_enriched <- enrichVolcanodata(knight_ADCO_int_up, "ChEA_2022")$ChEA_2022
-knight_ADCO_int_down_enriched <- enrichVolcanodata(knight_ADCO_int_down, "ChEA_2022")$ChEA_2022
-
 # Clustering and enrichment analysis 
 ratio_AD_clustable <- table(ratio_AD_z_clustnum$cluster)
 ratio_CO_clustable <- table(ratio_CO_z_clustnum$cluster)
@@ -387,7 +412,28 @@ ratio_CO_clustable <- table(ratio_CO_z_clustnum$cluster)
 ratio_AD_clust_enriched <- enrichClusts(ratio_AD_z_clustnum)
 ratio_CO_clust_enriched <- enrichClusts(ratio_CO_z_clustnum)
 
+for(i in 1:nclust) {
+  write.csv(ratio_AD_clust_enriched[[i]], paste0(getwd(), "/Data/Cluster/combinedData_AD/cluster_", i, "_pathways.csv"))
+  write.csv(ratio_CO_clust_enriched[[i]], paste0(getwd(), "/Data/Cluster/combinedData_CO/cluster_", i, "_pathways.csv"))
+}
 
 # differential sliding window analysis
 sliding_window <- 10
+# Key pathways across different windows --> i mean we can j do enrichR and see
+# number of significant proteins --> idk how the natuer paper did it, cuz there
+# isnt enough data for us to use a smaller date window
+# -log10(q) of each protein --> new trajectory and cluster by varying significance
+
+
+# combined Stanford volcano plot
+# what proteins are correlating the most with albumin. 
+# if the cluster score (cluster eigenvector? look into it.)
+# include storage days for stanford by subtracting from today and rerun diff analysis
+# introduce covariate for study design (binary variable for whether stanford/knight), add plasma_storagedays + drawdate_diff 
+# sliding window 
+
+write.csv(albumin_AD_enriched, "/home/sean777/albumin_AD_enriched.csv")
+
+
+
 
