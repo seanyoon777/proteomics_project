@@ -223,10 +223,18 @@ all_patientdata_CO <- all_patientdata[CO_index, ]
 all_ratio <- all_CSF / all_plasma
 all_ratio_AD <- all_ratio[all_patientdata$final_status == "AD", ]
 all_ratio_CO <- all_ratio[all_patientdata$final_status == "CO", ]
+all_plasma_AD <- all_plasma[all_patientdata$final_status == "AD", ]
+all_plasma_CO <- all_plasma[all_patientdata$final_status == "CO", ]
+all_CSF_AD <- all_CSF[all_patientdata$final_status == "AD", ]
+all_CSF_CO <- all_CSF[all_patientdata$final_status == "CO", ]
 
 all_ratio_z <- scale(all_ratio)
 all_ratio_AD_z <- scale(all_ratio_AD)
 all_ratio_CO_z <- scale(all_ratio_CO)
+all_plasma_AD_z <- scale(all_plasma_AD)
+all_plasma_CO_z <- scale(all_plasma_CO)
+all_CSF_AD_z <- scale(all_CSF_AD)
+all_CSF_CO_z <- scale(all_CSF_CO)
 
 ALBUMIN_CODE <- "ALB.18380.78.3"
 albumin_all_ratio <- all_ratio[, names(all_ratio) == ALBUMIN_CODE]
@@ -244,6 +252,10 @@ age_seq <- seq(age_min, age_max, by = 0.25)
 
 predratio_AD_z <- loess_predict(all_patientdata_AD$avg_drawage, all_ratio_AD_z, age_seq, "Age")
 predratio_CO_z <- loess_predict(all_patientdata_CO$avg_drawage, all_ratio_CO_z, age_seq, "Age")
+predplasma_AD_z <- loess_predict(all_patientdata_AD$avg_drawage, all_plasma_AD_z, age_seq, "Age")
+predplasma_CO_z <- loess_predict(all_patientdata_CO$avg_drawage, all_plasma_CO_z, age_seq, "Age")
+predCSF_AD_z <- loess_predict(all_patientdata_AD$avg_drawage, all_CSF_AD_z, age_seq, "Age")
+predCSF_CO_z <- loess_predict(all_patientdata_CO$avg_drawage, all_CSF_CO_z, age_seq, "Age")
 
 # clustering for CO and DA
 ratio_CO_z_dist <- dist(t(predratio_CO_z[-1]), method = "euclidean")
@@ -251,8 +263,24 @@ ratio_CO_z_clust <- hclust(ratio_CO_z_dist, method = "complete")
 ratio_AD_z_dist <- dist(t(predratio_AD_z[-1]), method = "euclidean")
 ratio_AD_z_clust <- hclust(ratio_AD_z_dist, method = "complete")
 
+plasma_CO_z_dist <- dist(t(predplasma_CO_z[-1]), method = "euclidean")
+plasma_CO_z_clust <- hclust(plasma_CO_z_dist, method = "complete")
+plasma_AD_z_dist <- dist(t(predplasma_AD_z[-1]), method = "euclidean")
+plasma_AD_z_clust <- hclust(plasma_AD_z_dist, method = "complete")
+
+CSF_CO_z_dist <- dist(t(predCSF_CO_z[-1]), method = "euclidean")
+CSF_CO_z_clust <- hclust(CSF_CO_z_dist, method = "complete")
+CSF_AD_z_dist <- dist(t(predCSF_AD_z[-1]), method = "euclidean")
+CSF_AD_z_clust <- hclust(CSF_AD_z_dist, method = "complete")
+
 determine_numclust(ratio_CO_z_clust, ratio_CO_z_dist)
 determine_numclust(ratio_AD_z_clust, ratio_AD_z_dist)
+
+determine_numclust(CSF_CO_z_clust, CSF_CO_z_dist)
+determine_numclust(CSF_AD_z_clust, CSF_AD_z_dist)
+
+determine_numclust(plasma_CO_z_clust, plasma_CO_z_dist)
+determine_numclust(plasma_AD_z_clust, plasma_AD_z_dist)
 # we conclude both 9 clusters 
 
 nclust <- 10
@@ -267,6 +295,23 @@ generate_clusterplot(ratio_AD_z_long)
 generate_clusterplot(ratio_CO_z_long)
 ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == 10, ]
 
+nclust <- 9
+CSF_AD_z_clustnum <- proteinByClust(CSF_AD_z_clust, CSF_AD_z_dist, nclust)
+CSF_CO_z_clustnum <- proteinByClust(CSF_CO_z_clust, CSF_CO_z_dist, nclust)
+CSF_AD_z_long <- proteinClustData(predCSF_AD_z, CSF_AD_z_clustnum)
+CSF_CO_z_long <- proteinClustData(predCSF_CO_z, CSF_CO_z_clustnum)
+generate_clusterplot(CSF_AD_z_long)
+generate_clusterplot(CSF_CO_z_long)
+CSF_AD_z_clustnum[CSF_AD_z_clustnum$cluster == 9,]
+
+nclust <- 8
+plasma_AD_z_clustnum <- proteinByClust(plasma_AD_z_clust, plasma_AD_z_dist, nclust)
+plasma_CO_z_clustnum <- proteinByClust(plasma_CO_z_clust, plasma_CO_z_dist, nclust)
+plasma_AD_z_long <- proteinClustData(predplasma_AD_z, plasma_AD_z_clustnum)
+plasma_CO_z_long <- proteinClustData(predplasma_CO_z, plasma_CO_z_clustnum)
+generate_clusterplot(plasma_AD_z_long)
+generate_clusterplot(plasma_CO_z_long)
+plasma_CO_z_clustnum[plasma_CO_z_clustnum$cluster == 7,]
 
 # LOOK AT RATIO BW PLASMA AND CSF ALBUMIN (albumin index). look at which ones 
 # are correlated with albumin. (ALB.18380.78.3) Find which cluster it is in, etc 
@@ -292,8 +337,8 @@ ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary, xLabs)
 ratio_AD_volcanodata_nonpadj <- generate_volcanodata_nonpadj(ratio_AD_summary)
 
 xLabs <- c("Male", "Age")
-generate_volcanoplot(ratio_AD_volcanodata, xLabs, 3)
-generate_volcanoplot(ratio_CO_volcanodata, xLabs, 3)
+generate_volcanoplot(ratio_AD_volcanodata, xLabs, 2, 10)
+generate_volcanoplot(ratio_CO_volcanodata, xLabs, 2, 10)
 generate_volcanoplot(ratio_AD_volcanodata_nonpadj, xLabs, 3)
 
 xVars <- c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect")
@@ -308,7 +353,7 @@ for(i in 1:ncol(all_ratio)) {
 xLabs <- c("Male", "Age", "AD", "Drawdate difference", "storage days", "Study bias")
 ratio_summary <- generate_lmsummary(ratio_models, colnames(all_ratio), xLabs)
 ratio_volcanodata <- generate_volcanodata(ratio_summary, xLabs)
-generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3)
+generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3, 10)
 
 xVars <- c("sex", "age", "AD", "drawdateDiff", "storageDays", "studyBias")
 for(i in 1:6) {
@@ -365,8 +410,8 @@ knight_CO_lmsummary <- generate_lmsummary(knight_CO_lmodels, knight_all_prots, c
 knight_AD_volcanodata <- generate_volcanodata(knight_AD_lmsummary, c("Male", "Age"))
 knight_CO_volcanodata <- generate_volcanodata(knight_CO_lmsummary, c("Male", "Age"))
 
-generate_volcanoplot(knight_AD_volcanodata, c("Male", "Age"), 2)
-generate_volcanoplot(knight_CO_volcanodata)
+generate_volcanoplot(knight_AD_volcanodata, c("Male", "Age"), 2, 10)
+generate_volcanoplot(knight_CO_volcanodata, c("Male", "Age"), 2, 10)
 
 #interaction model bw age and alzheimers disease status (extract CD? score)
 knight_patients_CDR <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
@@ -375,10 +420,10 @@ knight_patients_CDR <- knight_patients %>% mutate(CDR = knight_patients_CDR$CDR_
   mutate(Age_CDR = avg_drawage * CDR)
 knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
 knight_all_prots <- names(knight_ratio)
-knight_interaction_lmodels <- generate_lmodels(knight_ratio, knight_patients_CDR, c("Sex", "Age_CDR"))
-knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, knight_all_prots, c("Male", "Age*CDR"))
-knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR"))
-generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2)
+knight_interaction_lmodels <- generate_lmodels(knight_ratio, knight_patients_CDR, c("Sex", "Age_CDR", "drawdate_diff", "storage_days"))
+knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, knight_all_prots, c("Male", "Age*CDR", "drawdate_diff", "storage_days"))
+knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR", "drawdate_diff", "storage_days"))
+generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2, 10)
 
 xVars <- c("Male", "Age*CDR")
 for(i in 1:2) {
@@ -556,7 +601,7 @@ ratio_stability_plot <- function(all_patientdata, ratio_stability_volcanodata, i
   title_grob <- textGrob(title, gp=gpar(fontsize=20, fontface="bold"))
   gridExtra::grid.arrange(grobs = volcanoplot, ncol = ncol, top = title_grob)
 }
-ratio_stability_plot(all_patientdata, ratio_stability_volcanodata_0, num_top_proteins = 12, 20, boxpadding = .5, factor_num = 1)
+ratio_stability_plot(all_patientdata, ratio_stability_volcanodata_0, num_top_proteins = 12, 20, boxpadding = .5, factor_num = 3)
 ratio_stability_plot(all_patientdata, ratio_stability_volcanodata_40_0, num_top_proteins = 12, 40, boxpadding = .5, factor_num = 1, ncol = 2)
 
 padj_rank <- function() {
@@ -566,7 +611,6 @@ padj_rank <- function() {
 
 
 
-ratio_stability_plot(all_patientdata, ratio_int_stability_volcanodata, num_top_proteins = 12, 40, boxpadding = .5, factor_num = 3)
 
 
 
@@ -576,8 +620,7 @@ ratio_stability_plot(all_patientdata, ratio_int_stability_volcanodata, num_top_p
 #
 geom_text_repel(data = top_genes, aes(label = Protein, vjust = qval, hjust = log2fc),
                 size = 3, color = "black", box.padding = boxpadding, 
-                max.overlaps = Inf, force_pull = 20, max.iter = 50000) + 
-
+                max.overlaps = Inf, force_pull = 20, max.iter = 50000) 
 
 
 
@@ -590,6 +633,7 @@ inverse_normal_transform <- function(x) {
 }
 all_ratio_int <- data.frame(apply(all_ratio, 2, inverse_normal_transform))
 ratio_int_stability_volcanodata <- ratio_stability_DEA(all_patientdata, all_ratio_int, interval = 40)
+ratio_stability_plot(all_patientdata, ratio_int_stability_volcanodata, num_top_proteins = 12, 40, boxpadding = .5, factor_num = 3)
 
 
 
