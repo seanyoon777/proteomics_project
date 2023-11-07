@@ -337,8 +337,8 @@ ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary, xLabs)
 ratio_AD_volcanodata_nonpadj <- generate_volcanodata_nonpadj(ratio_AD_summary)
 
 xLabs <- c("Male", "Age")
-generate_volcanoplot(ratio_AD_volcanodata, xLabs, 2, 10)
-generate_volcanoplot(ratio_CO_volcanodata, xLabs, 2, 10)
+generate_volcanoplot(ratio_AD_volcanodata, xLabs, 2, 10, c(FALSE, FALSE))
+generate_volcanoplot(ratio_CO_volcanodata, xLabs, 2, 10, c(FALSE, FALSE))
 generate_volcanoplot(ratio_AD_volcanodata_nonpadj, xLabs, 3)
 
 xVars <- c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect")
@@ -353,7 +353,7 @@ for(i in 1:ncol(all_ratio)) {
 xLabs <- c("Male", "Age", "AD", "Drawdate difference", "storage days", "Study bias")
 ratio_summary <- generate_lmsummary(ratio_models, colnames(all_ratio), xLabs)
 ratio_volcanodata <- generate_volcanodata(ratio_summary, xLabs)
-generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3, 10)
+generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, FALSE))
 
 xVars <- c("sex", "age", "AD", "drawdateDiff", "storageDays", "studyBias")
 for(i in 1:6) {
@@ -390,7 +390,18 @@ for(i in 1:5) {
   write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_AD/combinedData_AD_", xVars[i], "_downRegulated.csv"))
 }
 
+# Just curious how these are different. 
+all_CSF_lmodels <- generate_lmodels(all_CSF, all_patientdata, 
+  c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect"))
+all_CSF_lmsummary <- generate_lmsummary(all_CSF_lmodels, all_prots, c("Male", "Age", "AD", "drawdate_diff", "storage_days", "batch_effect"))
+all_CSF_volcanodata <- generate_volcanodata(all_CSF_lmsummary, c("Male", "Age", "AD"))
+generate_volcanoplot(all_CSF_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, TRUE))
 
+all_plasma_lmodels <- generate_lmodels(all_plasma, all_patientdata, 
+                                    c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect"))
+all_plasma_lmsummary <- generate_lmsummary(all_plasma_lmodels, all_prots, c("Male", "Age", "AD", "drawdate_diff", "storage_days", "batch_effect"))
+all_plasma_volcanodata <- generate_volcanodata(all_plasma_lmsummary, c("Male", "Age", "AD"))
+generate_volcanoplot(all_plasma_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, TRUE))
 
 # knight before p-adjusted VS stanford volcano plots --> compare enrichR pathways 
 knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
@@ -410,20 +421,22 @@ knight_CO_lmsummary <- generate_lmsummary(knight_CO_lmodels, knight_all_prots, c
 knight_AD_volcanodata <- generate_volcanodata(knight_AD_lmsummary, c("Male", "Age"))
 knight_CO_volcanodata <- generate_volcanodata(knight_CO_lmsummary, c("Male", "Age"))
 
-generate_volcanoplot(knight_AD_volcanodata, c("Male", "Age"), 2, 10)
-generate_volcanoplot(knight_CO_volcanodata, c("Male", "Age"), 2, 10)
+generate_volcanoplot(knight_AD_volcanodata, c("Male", "Age"), 2, 10, c(FALSE, FALSE))
+generate_volcanoplot(knight_CO_volcanodata, c("Male", "Age"), 2, 10, c(FALSE, FALSE))
 
 #interaction model bw age and alzheimers disease status (extract CD? score)
 knight_patients_CDR <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
   select(CDR_at_blood_draw)
-knight_patients_CDR <- knight_patients %>% mutate(CDR = knight_patients_CDR$CDR_at_blood_draw) %>%
-  mutate(Age_CDR = avg_drawage * CDR)
+knight_patients_CDR <- knight_patients %>% mutate(CDR = knight_patients_CDR$CDR_at_blood_draw)
+knight_patients_CDR$CDR <- if_else(is.na(knight_patients_CDR$CDR) & knight_patients_CDR$final_status == "CO", 
+                                   0.00, knight_patients_CDR$CDR)
+knight_patients_CDR <- knight_patients_CDR %>% mutate(Age_CDR = avg_drawage * CDR)
 knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
 knight_all_prots <- names(knight_ratio)
 knight_interaction_lmodels <- generate_lmodels(knight_ratio, knight_patients_CDR, c("Sex", "Age_CDR", "drawdate_diff", "storage_days"))
 knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, knight_all_prots, c("Male", "Age*CDR", "drawdate_diff", "storage_days"))
 knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR", "drawdate_diff", "storage_days"))
-generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2, 10)
+generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2, 10, c(FALSE, FALSE))
 
 xVars <- c("Male", "Age*CDR")
 for(i in 1:2) {
@@ -643,7 +656,7 @@ stanford_all_prots <- colnames(stanford_ratio)
 stanford_lmodel <- generate_lmodels(stanford_ratio, stanford_patients, c("avg_drawage", "Gender", "final_status"))
 stanford_lmsummary <- generate_lmsummary(stanford_lmodel, stanford_all_prots, c("Age", "Male", "AD"))
 stanford_volcanodata <- generate_volcanodata(stanford_lmsummary, c("Age", "Male", "AD"))
-generate_volcanoplot(stanford_volcanodata, c("Age", "Male", "AD"), 3)
+generate_volcanoplot(stanford_volcanodata, c("Age", "Male", "AD"), 3, 12)
 
 knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
 knight_all_prots <- colnames(knight_ratio)

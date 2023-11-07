@@ -59,8 +59,69 @@ generate_volcanodata_nonpadj <- function(data) {
   return(volcano_data)
 }
 
+generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval) {
+  image <- ggplot(volcanodata_temp, aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
+    geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
+    scale_size_continuous(range = scale_size) +
+    scale_alpha_continuous(range = c(0.5, 1)) +
+    #geom_point(color = "black", shape = 21, size = 0.5, stroke = 0.5, na.rm = T) +
+    #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
+    theme_bw(base_size = 16) +
+    theme(legend.position = "none") +
+    #ggtitle(label = paste(str_split(plot_title, '_', simplify = T), sep = "", collapse = " ")) + 
+    xlab("log2 FC") +
+    ylab(expression(-log[10]("q"))) +
+    scale_color_manual(values = c("Upregulated" = "indianred1",
+                                  "Downregulated" = "royalblue1",
+                                  "none" = "#2c2c2c")) +
+    annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
+             label = xVars[i], hjust = 0, size = 4) +
+    geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = log2fc),
+                    size = 3, color = "black", nudge_y = -0.2) + 
+    theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
+          plot.background = element_rect(fill = "white"),
+          axis.title = element_text(size = 12),
+          axis.text = element_text(size = 12),
+          plot.title = element_text(size = 10, hjust = 0.5), 
+          axis.line = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          text = element_text(family = "Arial")) 
+  return (image)
+}
 
-generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums) {
+generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval) {
+  image <- ggplot(volcanodata_temp, aes(x = -log2fc, y = qval, color = factor(diffexpressed))) + 
+    geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
+    scale_size_continuous(range = scale_size) +
+    scale_alpha_continuous(range = c(0.5, 1)) +
+    #geom_point(color = "black", shape = 21, size = 0.5, stroke = 0.5, na.rm = T) +
+    #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
+    theme_bw(base_size = 16) +
+    theme(legend.position = "none") +
+    #ggtitle(label = paste(str_split(plot_title, '_', simplify = T), sep = "", collapse = " ")) + 
+    xlab("log2 FC") +
+    ylab(expression(-log[10]("q"))) +
+    scale_color_manual(values = c("Downregulated" = "indianred1",
+                                  "Upregulated" = "royalblue1",
+                                  "none" = "#2c2c2c")) +
+    annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
+             label = xVars[i], hjust = 0, size = 4) +
+    geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = -log2fc),
+                    size = 3, color = "black", nudge_y = -0.2) + 
+    theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
+          plot.background = element_rect(fill = "white"),
+          axis.title = element_text(size = 12),
+          axis.text = element_text(size = 12),
+          plot.title = element_text(size = 10, hjust = 0.5), 
+          axis.line = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          text = element_text(family = "Arial")) 
+  return (image)
+}
+
+generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_vec) {
   volcanoplot <- list()
   for(i in 1:length(xVars)) {
     
@@ -76,67 +137,12 @@ generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums) {
     } else {
       scale_size <- c(1, 6)
     }
-    
-    if (xVars[i] == "AD") {
-      volcanoplot[[i]] <- ggplot(volcanodata_temp, aes(x = -log2fc, y = qval, color = factor(diffexpressed))) + 
-        geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
-        scale_size_continuous(range = scale_size) +
-        scale_alpha_continuous(range = c(0.5, 1)) +
-        #geom_point(color = "black", shape = 21, size = 0.5, stroke = 0.5, na.rm = T) +
-        #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
-        theme_bw(base_size = 16) +
-        theme(legend.position = "none") +
-        #ggtitle(label = paste(str_split(plot_title, '_', simplify = T), sep = "", collapse = " ")) + 
-        xlab("log2 FC") +
-        ylab(expression(-log[10]("q"))) +
-        scale_color_manual(values = c("Downregulated" = "indianred1",
-                                      "Upregulated" = "royalblue1",
-                                      "none" = "#2c2c2c")) +
-        annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-                 label = xVars[i], hjust = 0, size = 4) +
-        geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = -log2fc),
-                        size = 3, color = "black", nudge_y = -0.2) + 
-        theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
-              plot.background = element_rect(fill = "white"),
-              axis.title = element_text(size = 12),
-              axis.text = element_text(size = 12),
-              plot.title = element_text(size = 10, hjust = 0.5), 
-              axis.line = element_blank(),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(),
-              text = element_text(family = "Arial")) 
+    if (reverse_vec[i]) {
+      volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval)
     } else {
-      volcanoplot[[i]] <- ggplot(volcanodata_temp, aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
-        geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
-        scale_size_continuous(range = scale_size) +
-        scale_alpha_continuous(range = c(0.5, 1)) +
-        #geom_point(color = "black", shape = 21, size = 0.5, stroke = 0.5, na.rm = T) +
-        #geom_text_repel(max.overlaps = 10, aes(label = delabel)) + 
-        theme_bw(base_size = 16) +
-        theme(legend.position = "none") +
-        #ggtitle(label = paste(str_split(plot_title, '_', simplify = T), sep = "", collapse = " ")) + 
-        xlab("log2 FC") +
-        ylab(expression(-log[10]("q"))) +
-        scale_color_manual(values = c("Upregulated" = "indianred1",
-                                      "Downregulated" = "royalblue1",
-                                      "none" = "#2c2c2c")) +
-        annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-                 label = xVars[i], hjust = 0, size = 4) +
-        geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = log2fc),
-                        size = 3, color = "black", nudge_y = -0.2) + 
-        theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
-              plot.background = element_rect(fill = "white"),
-              axis.title = element_text(size = 12),
-              axis.text = element_text(size = 12),
-              plot.title = element_text(size = 10, hjust = 0.5), 
-              axis.line = element_blank(),
-              panel.grid.major = element_blank(),
-              panel.grid.minor = element_blank(),
-              text = element_text(family = "Arial")) 
+      volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval)
     }
-  
   }
-  
   gridExtra::grid.arrange(grobs = volcanoplot, ncol = ncols)
 }
 
