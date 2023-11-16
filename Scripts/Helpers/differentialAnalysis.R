@@ -59,7 +59,9 @@ generate_volcanodata_nonpadj <- function(data) {
   return(volcano_data)
 }
 
-generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval) {
+generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, 
+                                      scale_size, top_genes, max_qval, num_proteins) {
+  label_text <- paste(xVars[i], " (", num_proteins, " Proteins)", sep = "")
   image <- ggplot(volcanodata_temp, aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
     geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
     scale_size_continuous(range = scale_size) +
@@ -75,7 +77,7 @@ generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, s
                                   "Downregulated" = "royalblue1",
                                   "none" = "#2c2c2c")) +
     annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-             label = xVars[i], hjust = 0, size = 4) +
+             label = label_text, hjust = 0, size = 4) +
     geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = log2fc),
                     size = 3, color = "black", nudge_y = -0.2) + 
     theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
@@ -90,7 +92,9 @@ generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, s
   return (image)
 }
 
-generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval) {
+generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, 
+                                          scale_size, top_genes, max_qval, num_proteins) {
+  label_text <- paste(xVars[i], " (", num_proteins, " Proteins)", sep = "")
   image <- ggplot(volcanodata_temp, aes(x = -log2fc, y = qval, color = factor(diffexpressed))) + 
     geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
     scale_size_continuous(range = scale_size) +
@@ -106,7 +110,7 @@ generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_tem
                                   "Upregulated" = "royalblue1",
                                   "none" = "#2c2c2c")) +
     annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
-             label = xVars[i], hjust = 0, size = 4) +
+             label = label_text, hjust = 0, size = 4) +
     geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = -log2fc),
                     size = 3, color = "black", nudge_y = -0.2) + 
     theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
@@ -129,6 +133,7 @@ generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_v
     top_volcanodata <- volcanodata_temp[volcanodata_temp$diffexpressed != "none", ]
     top_genes <- head((volcanodata[[i]])[order(-volcanodata[[i]]$qval), ], prot_nums)
     max_qval <- max(abs(volcanodata_temp$qval), na.rm = TRUE)
+    num_proteins <- nrow(top_volcanodata)
     
     volcanodata_temp$point_size <- abs(volcanodata_temp$qval)^2 / max_qval
     if (sum(volcanodata_temp$diffexpressed != "none") == 0) {
@@ -138,12 +143,16 @@ generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_v
       scale_size <- c(1, 6)
     }
     if (reverse_vec[i]) {
-      volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval)
+      volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval, num_proteins)
     } else {
-      volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval)
+      volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval, num_proteins)
     }
   }
-  gridExtra::grid.arrange(grobs = volcanoplot, ncol = ncols)
+  if (length(xVars) == 1) {
+    return(volcanoplot[[i]])
+  } else {
+    gridExtra::grid.arrange(grobs = volcanoplot, ncol = ncols)
+  }
 }
 
 inverse_normal_transform <- function(x) {

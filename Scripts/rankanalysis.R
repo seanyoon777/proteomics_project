@@ -12,447 +12,117 @@ get_biodata <- function(path) {
   read.csv(paste(dir, path, sep = "/"))
 }
 
-
 # same thing with stanford data? ----
-stanford_barcodes <- get_biodata("ADRC/barcodes.csv")
-stanford_CSF_patients <- get_biodata("ADRC/CSF_patients.csv")
-stanford_CSF_prots <- get_biodata("ADRC/CSF_prots.csv")
-stanford_plasma_patients <- get_biodata("ADRC/plasma_patients.csv")
-stanford_plasma_prots <- get_biodata("ADRC/plasma_prots.csv")
+all_patientdata <- get_biodata("combined/patientdata.csv")
+all_patientdata_AD <- get_biodata("combined/patientdata_AD.csv")
+all_patientdata_CO <- get_biodata("combined/patientdata_CO.csv")
 
-stanford_CSF_patients$Age <- gsub('^"&"$', '', stanford_CSF_patients$Age)
-stanford_CSF_patients$Age <- as.numeric(stanford_CSF_patients$Age)
+all_plasma <- get_biodata("combined/plasma_raw_lodfiltered.csv")
+all_plasma_AD <- get_biodata("combined/plasma_raw_AD_lodfiltered.csv")
+all_plasma_CO <- get_biodata("combined/plasma_raw_CO_lodfiltered.csv")
 
-stanford_plasma_prots <- stanford_plasma_prots[stanford_plasma_prots$Barcode %in% stanford_plasma_patients$Barcode, ]
-stanford_CSF_prots <- data.frame(Barcode = stanford_CSF_patients$Barcode, stanford_CSF_prots)
+all_CSF <- get_biodata("combined/CSF_raw_lodfiltered.csv")
+all_CSF_AD <- get_biodata("combined/CSF_raw_AD_lodfiltered.csv")
+all_CSF_CO <- get_biodata("combined/CSF_raw_CO_lodfiltered.csv")
 
-stanford_common_prots <- intersect(names(stanford_CSF_prots), names(stanford_plasma_prots))
+# Experiment 1: Raw values  
+all_CSF_plasma <- all_CSF / all_plasma
+all_CSF_plasma_AD <- all_CSF_AD / all_plasma_AD
+all_CSF_plasma_CO <- all_CSF_CO / all_plasma_CO
 
-stanford_plasma_prots <- stanford_plasma_prots[stanford_common_prots]
-stanford_CSF_prots <- stanford_CSF_prots[stanford_common_prots]
-
-stanford_plasma_prots <- stanford_plasma_prots[stanford_plasma_prots$Barcode %in% stanford_barcodes$Plasma_Barcode, ]
-stanford_plasma_patients <- stanford_plasma_patients[stanford_plasma_patients$Barcode %in% stanford_barcodes$Plasma_Barcode, ]
-stanford_CSF_prots <- stanford_CSF_prots[stanford_CSF_prots$Barcode %in% stanford_barcodes$CSF_Barcode, ]
-stanford_CSF_patients <- stanford_CSF_patients[stanford_CSF_patients$Barcode %in% stanford_barcodes$CSF_Barcode, ]
-
-stanford_plasma_prots <- stanford_plasma_prots %>%
-  filter(Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
-  arrange(match(Barcode, stanford_barcodes$Plasma_Barcode)) %>% 
-  slice(order(match(Barcode, stanford_barcodes$Plasma_Barcode)))
-
-stanford_plasma_patients <- stanford_plasma_patients %>%
-  filter(Barcode %in% stanford_barcodes$Plasma_Barcode) %>% 
-  arrange(match(Barcode, stanford_barcodes$Plasma_Barcode)) %>% 
-  slice(order(match(Barcode, stanford_barcodes$Plasma_Barcode)))
-
-stanford_gendermatch_index <- stanford_CSF_patients$Gender == stanford_plasma_patients$Gender
-stanford_CSF_patients <- stanford_CSF_patients[stanford_gendermatch_index, ]
-stanford_plasma_patients <- stanford_plasma_patients[stanford_gendermatch_index, ]
-stanford_CSF_prots <- stanford_CSF_prots[stanford_gendermatch_index, ]
-stanford_plasma_prots <- stanford_plasma_prots[stanford_gendermatch_index, ]
-stanford_barcodes <- stanford_barcodes[stanford_gendermatch_index, ]
-
-stanford_patients <- stanford_plasma_patients %>% 
-  mutate(Plasma_Barcode = Barcode, CSF_Barcode = stanford_CSF_patients$Barcode, 
-         Plasma_drawage = Age, CSF_drawage = stanford_CSF_patients$Age, 
-         Plasma_storagedays = Storage_days, 
-         CSF_storagedays = stanford_CSF_patients$Storage_days,
-         CSF_days = stanford_CSF_patients$Storage_days, 
-         Plasma_drawdate = strptime(Date.of.draw, format = "%m/%d/%y"), 
-         CSF_drawdate = strptime(stanford_CSF_patients$Date_of_CSF_sample, format = "%m/%d/%y"), 
-         Plasma_drawstatus = Diagnosis_group, 
-         CSF_drawstatus = stanford_CSF_patients$Diagnosis_group) %>% 
-  group_by(Plasma_Barcode) %>%
-  mutate(avg_drawage = (Plasma_drawage + as.numeric(CSF_drawage)) / 2, 
-         drawdate_diff = difftime(Plasma_drawdate, CSF_drawdate, units = "days"), 
-         avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>%
-  mutate(Plasma_drawdate2 = as.numeric(difftime(today(), Plasma_drawdate)), batch_effect = 1) %>%
-  dplyr::select(Plasma_Barcode, CSF_Barcode, Gender, avg_drawage, Plasma_drawdate, 
-                Plasma_drawage, Plasma_drawstatus, Plasma_storagedays, CSF_drawdate, 
-                CSF_drawage, CSF_drawstatus, CSF_storagedays, drawdate_diff,
-                Plasma_drawdate2, avg_drawdate, batch_effect) %>%
-  as.data.frame()
-
-
-# actually drawdate diff is all below 90!!! we can proceed without setting a time window. 
-stanford_patients <- stanford_patients %>% 
-  mutate(Plasma_drawstatus = 
-           if_else(Plasma_drawstatus == "ADMCI", "AD", Plasma_drawstatus)) %>% 
-  mutate(CSF_drawstatus = 
-           if_else(CSF_drawstatus == "MCI-AD", "AD", CSF_drawstatus)) %>% 
-  mutate(Plasma_drawstatus = 
-           if_else(Plasma_drawstatus == "HC", "CO", Plasma_drawstatus)) %>% 
-  mutate(CSF_drawstatus = 
-           if_else(CSF_drawstatus == "HC", "CO", CSF_drawstatus)) %>% 
-  mutate(final_status = 
-           if_else(Plasma_drawdate < CSF_drawdate, CSF_drawstatus, Plasma_drawstatus))
-
-stanford_AD_index <- stanford_patients$final_status == "AD" 
-stanford_CO_index <- stanford_patients$final_status == "CO"
-stanford_AD_index[is.na(stanford_AD_index)] <- FALSE
-stanford_CO_index[is.na(stanford_CO_index)] <- FALSE
-stanford_index <- stanford_AD_index | stanford_CO_index
-
-# clean WashU data 
-knight_plasma_meta <- get_biodata("Knight/plasma/WashU_Plasma_SomaScan7K_sample_metadata.csv")
-knight_plasma_prots <- get_biodata("Knight/plasma/WashU_Plasma_SomaScan7K_sample_protein_expression.csv")
-knight_plasma_patients <- read.xlsx(paste(dir, "Knight/plasma/Plasma_ BasicDemo.xlsx", sep = "/"))
-knight_CSF_meta <- get_biodata("Knight/CSF/WashU_CSF_SomaScan7K_sample_metadata.csv")
-knight_CSF_prots <- get_biodata("Knight/CSF/WashU_CSF_SomaScan7K_sample_protein_expression.csv")
-knight_CSF_patients <- read.xlsx(paste(dir, "Knight/CSF/CSF_BasicDemo.xlsx", sep = "/"))
-
-knight_patients_meta <- get_biodata("Knight/WashU_ADNI_demographic.csv")
-
-knight_plasma_prots[4:ncol(knight_plasma_prots)] <- log10(knight_plasma_prots[4:ncol(knight_plasma_prots)])
-knight_CSF_prots[4:ncol(knight_CSF_prots)] <- log10(knight_CSF_prots[4:ncol(knight_CSF_prots)])
-
-protMeta <- read_csv("~/Developer/Data/proteomics_project_data/Knight/ProteinMetadata_with_LOD.csv", col_types = )
-protMeta$SeqId = str_replace(protMeta$SeqId, "-", ".")
-protMeta <- filter(protMeta, (Organism == "Human" | Organism == "HIV-1" | Organism == "HIV-2") & Type == "Protein")
-all_prots_ID <- names(knight_plasma_prots)[4:ncol(knight_plasma_prots)] 
-all_prots <- str_replace(all_prots_ID, ".*?(\\d+)\\.(\\d+)\\.\\d+$", "\\1.\\2")
-my_order <- match(protMeta$SeqId, all_prots)
-all_prots <- protMeta$Key_2
-nprots <- length(all_prots)
-my_order <- my_order + 3
-
-knight_plasma_prots <- knight_plasma_prots[c(1:3, my_order)]
-colnames(knight_plasma_prots) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
-
-knight_CSF_prots <- knight_CSF_prots[c(1:3, my_order)]
-colnames(knight_CSF_prots) <- c("PA_DB_UID", "Barcode2d", "ExtIdentifier", all_prots)
-
-
-all_prots <- intersect(names(knight_plasma_prots)[4:ncol(knight_plasma_prots)], 
-                       names(knight_CSF_prots)[4:ncol(knight_CSF_prots)])
-nprots <- length(all_prots)
-
-knight_plasma_patients <- knight_plasma_patients %>% 
-  mutate(final_cc_status.updated = 
-           if_else(final_cc_status.updated == "Neuropath Confirmed AD", 
-                   "AD", final_cc_status.updated)) %>% 
-  mutate(final_cc_status.updated = 
-           if_else(final_cc_status.updated == "Neuropath Confirmed Control", 
-                   "CO", final_cc_status.updated)) %>% 
-  mutate(DateOfBirth = if_else(grepl("/", DateOfBirth), strptime(DateOfBirth, format = "%m/%d/%Y"), 
-                               convertToDateTime(as.numeric(DateOfBirth)))) %>% 
-  mutate(drawdate = convertToDateTime(as.numeric(drawdate)))
-
-knight_CSF_patients <- knight_CSF_patients %>% 
-  mutate(Last.status = 
-           if_else(Last.status == "Neuropath Confirmed AD", 
-                   "AD", Last.status)) %>% 
-  mutate(Last.status = 
-           if_else(Last.status == "Neuropath Confirmed Control", 
-                   "CO", Last.status)) %>% 
-  mutate(DrawDate = convertToDateTime(as.numeric(DrawDate)))
-
-knight_plasma_meta <- arrange(knight_plasma_meta, PA_DB_UID)
-knight_plasma_prots <- arrange(knight_plasma_prots, PA_DB_UID)
-knight_plasma_patients <- arrange(knight_plasma_patients, PA_DB_UID)
-knight_CSF_meta <- arrange(knight_CSF_meta, PA_DB_UID)
-knight_CSF_prots <- arrange(knight_CSF_prots, PA_DB_UID)
-knight_CSF_patients <- arrange(knight_CSF_patients, PA_DB_UID)
-
-knight_common_ID <- intersect(knight_CSF_patients$PA_DB_UID, knight_plasma_patients$PA_DB_UID) %>% 
-  data.frame(PA_DB_UID = .) %>% arrange(PA_DB_UID) 
-knight_common_ID <- knight_common_ID$PA_DB_UID
-
-knight_plasma_meta <- knight_plasma_meta[knight_plasma_meta$PA_DB_UID %in% knight_common_ID, ]
-knight_plasma_prots <- knight_plasma_prots[knight_plasma_prots$PA_DB_UID %in% knight_common_ID, ]
-knight_plasma_patients <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_common_ID, ]
-knight_CSF_meta <- knight_CSF_meta[knight_CSF_meta$PA_DB_UID %in% knight_common_ID, ]
-knight_CSF_prots <- knight_CSF_prots[knight_CSF_prots$PA_DB_UID %in% knight_common_ID, ]
-knight_CSF_patients <- knight_CSF_patients[knight_CSF_patients$PA_DB_UID %in% knight_common_ID, ]
-
-knight_patients <- merge(knight_CSF_patients, knight_plasma_patients, by = "PA_DB_UID") %>% 
-  select(PA_DB_UID = PA_DB_UID, Sex = gender, DOB = DateOfBirth, 
-         Plasma_drawdate = drawdate, Plasma_drawage = Age_at_blood_draw.updated, 
-         Plasma_drawstatus = final_cc_status.updated, 
-         CSF_drawdate = DrawDate, CSF_drawage = age_at_csf_draw, 
-         CSF_drawstatus = Last.status) %>%
-  group_by(PA_DB_UID) %>% 
-  mutate(drawdate_diff = abs(difftime(Plasma_drawdate, CSF_drawdate, units = "days")), 
-         avg_drawdate = as.Date(mean(c(Plasma_drawdate, CSF_drawdate)))) %>% 
-  mutate(storage_days = as.numeric(difftime(today(), Plasma_drawdate, units = "days")), batch_effect = 0) %>% 
-  as.data.frame() 
-
-date_window <- 120
-knight_date_index <- knight_patients$drawdate_diff <= date_window
-knight_CSF_prots <- knight_CSF_prots[knight_date_index, ]
-knight_plasma_prots <- knight_plasma_prots[knight_date_index, ]
-
-knight_patients <- knight_patients[knight_date_index, ] %>% 
-  mutate(final_status = ifelse(Plasma_drawdate < CSF_drawdate, CSF_drawstatus, Plasma_drawstatus), 
-         avg_drawage = abs(Plasma_drawage + CSF_drawage) / 2, storage_days2 = storage_days) %>% 
-  select(PA_DB_UID, Sex, avg_drawage, drawdate_diff, Plasma_drawdate, CSF_drawdate, 
-         final_status, storage_days, storage_days2, batch_effect) 
-
-
-# get rid of non AD or COs
-knight_index <- knight_patients$final_status == "AD" | knight_patients$final_status == "CO" 
-stanford_index <- stanford_patients$final_status == "AD" | stanford_patients$final_status == "CO"
-
-knight_patients <- knight_patients[knight_index, ]
-stanford_patients <- stanford_patients[stanford_index, ]
-knight_plasma_prots <- knight_plasma_prots[knight_index, ]
-stanford_plasma_prots <- stanford_plasma_prots[stanford_index, ]
-knight_CSF_prots <- knight_CSF_prots[knight_index, ]
-stanford_CSF_prots <- stanford_CSF_prots[stanford_index, ]
-
-all_patientdata <- bind_rows(stanford_patients %>% 
-                               mutate(Sex = Gender, drawdate_diff = abs(drawdate_diff)) %>% 
-                               mutate(storage_days = Plasma_drawdate2) %>% 
-                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff, 
-                                             storage_days, batch_effect), 
-                             knight_patients %>% 
-                               dplyr::select(Sex, avg_drawage, final_status, drawdate_diff, 
-                                             storage_days, batch_effect))
-
-all_prots <- intersect(names(stanford_CSF_prots), names(knight_CSF_prots))
-all_CSF <- bind_rows(stanford_CSF_prots[all_prots], knight_CSF_prots[all_prots])
-all_plasma <- bind_rows(stanford_plasma_prots[all_prots], knight_plasma_prots[all_prots])
-
-AD_index <- all_patientdata$final_status == "AD"
-CO_index <- all_patientdata$final_status == "CO"
-
-all_patientdata_AD <- all_patientdata[AD_index, ]
-all_patientdata_CO <- all_patientdata[CO_index, ]
-
-all_plasma_rank <- as.data.frame(t(apply(all_plasma, 1, rank)))
-all_CSF_rank <- as.data.frame(t(apply(all_CSF, 1, rank)))
-
-all_rank_diff <- all_CSF_rank - all_plasma_rank
-all_rank_div <- all_CSF_rank / all_plasma_rank
-all_ratio <- all_CSF / all_plasma
-all_ratio_rank <- as.data.frame(t(apply(all_ratio, 1, rank)))
-
-all_ratio_rank_AD <- all_ratio_rank[all_patientdata$final_status == "AD", ]
-all_ratio_rank_CO <- all_ratio_rank[all_patientdata$final_status == "CO", ]
-all_plasma_rank_AD <- all_plasma_rank[all_patientdata$final_status == "AD", ]
-all_plasma_rank_CO <- all_plasma_rank[all_patientdata$final_status == "CO", ]
-all_CSF_rank_AD <- all_CSF_rank[all_patientdata$final_status == "AD", ]
-all_CSF_rank_CO <- all_CSF_rank[all_patientdata$final_status == "CO", ]
-
-ALBUMIN_CODE <- "ALB.18380.78.3"
-albumin_all_ratio_rank <- all_ratio_rank[, names(all_ratio_rank) == ALBUMIN_CODE]
-
-# How it changes across time? 
-
-rank_lineplot <- function(patient_df, rank_df, alpha = 0.05, highlight = "") {
-  num_proteins <- ncol(rank_df)
-  rank_long <- rank_df %>% 
-    pivot_longer(cols = everything(), names_to = "Protein", values_to = "Rank")
-  age_rep <- rep(patient_df$avg_drawage, each = num_proteins)
-  combined_df <- bind_cols(data.frame(Age = age_rep), data.frame(rank_long)) %>%
-    group_by(Protein, Age) %>%
-    summarize(AverageRank = mean(Rank, na.rm = TRUE)) %>%
-    ungroup() 
-  combined_df$Color <- ifelse(combined_df$Protein == highlight, "grey", "red")
-  View(combined_df)
-  stopifnot(nrow(combined_df) == length(unique(age_rep)) * num_proteins)
-  p <- ggplot(combined_df, aes(x = Age, y = AverageRank, group = Protein, color = Color)) +
-    geom_line(alpha = alpha) +
-    theme_minimal() +
-    labs(x = "Age", y = "Protein Value", title = "Protein Values Across Age") +
-    theme(legend.position = "right")
-  return(p)
+# Experiment 2 default: z-score, rank norm
+rank_transform <- function(df) {
+  temp <- as.data.frame(scale(df))
+  temp <- as.data.frame(t(apply(temp, 1, rank)))
+  return(temp)
 }
 
-rank_lineplot(all_patientdata_AD, all_CSF_rank_AD, highlight = "CRYBB2.10000.28.3")
-rank_lineplot(all_patientdata_CO, all_CSF_rank_CO)
-rank_lineplot(all_patientdata, all_rank_diff, "")
-rank_lineplot(all_patientdata_AD, data.frame(all_CSF_rank_AD$CRYBB2.10000.28.3), alpha = 1)
-  
-protein_long <- protein_df %>%
-  pivot_longer(cols = everything(), names_to = "Protein", values_to = "Value")
+all_plasma <- rank_transform(all_plasma)
+all_plasma_AD <- rank_transform(all_plasma_AD)
+all_plasma_CO <- rank_transform(all_plasma_CO)
+all_CSF <- rank_transform(all_CSF)
+all_CSF_AD <- rank_transform(all_CSF_AD)
+all_CSF_CO <- rank_transform(all_CSF_CO)
 
+# Experiment 2a: rank ratio
+all_CSF_plasma <- all_CSF / all_plasma
+all_CSF_plasma_AD <- all_CSF_AD / all_plasma_AD
+all_CSF_plasma_CO <- all_CSF_CO / all_plasma_CO
 
-ggplot(data, aes(x = Group, y = Rank, group = Protein)) +
-  geom_line(aes(color = Protein), size = 1) +
-  geom_point(aes(color = Protein), size = 3) +
-  theme_minimal() +
-  labs(x = "Group", y = "Protein Rank") +
-  coord_flip()
-
-# Maybe first start with slopegraph 
-ggplot(data, aes(x = Group, y = Rank, group = Protein)) +
-  geom_line(aes(color = Protein), size = 1) +
-  geom_point(aes(color = Protein), size = 3) +
-  theme_minimal() +
-  labs(x = "Group", y = "Protein Rank") +
-  coord_flip()
+# Experiment 2b: rank difference
+all_CSF_plasma <- all_CSF - all_plasma
+all_CSF_plasma_AD <- all_CSF_AD - all_plasma_AD
+all_CSF_plasma_CO <- all_CSF_CO - all_plasma_CO
 
 
 
-
-# clustering for CO and DA
-ratio_CO_z_dist <- dist(t(predratio_CO_z[-1]), method = "euclidean")
-ratio_CO_z_clust <- hclust(ratio_CO_z_dist, method = "complete")
-ratio_AD_z_dist <- dist(t(predratio_AD_z[-1]), method = "euclidean")
-ratio_AD_z_clust <- hclust(ratio_AD_z_dist, method = "complete")
-
-plasma_CO_z_dist <- dist(t(predplasma_CO_z[-1]), method = "euclidean")
-plasma_CO_z_clust <- hclust(plasma_CO_z_dist, method = "complete")
-plasma_AD_z_dist <- dist(t(predplasma_AD_z[-1]), method = "euclidean")
-plasma_AD_z_clust <- hclust(plasma_AD_z_dist, method = "complete")
-
-CSF_CO_z_dist <- dist(t(predCSF_CO_z[-1]), method = "euclidean")
-CSF_CO_z_clust <- hclust(CSF_CO_z_dist, method = "complete")
-CSF_AD_z_dist <- dist(t(predCSF_AD_z[-1]), method = "euclidean")
-CSF_AD_z_clust <- hclust(CSF_AD_z_dist, method = "complete")
-
-determine_numclust(ratio_CO_z_clust, ratio_CO_z_dist)
-determine_numclust(ratio_AD_z_clust, ratio_AD_z_dist)
-
-determine_numclust(CSF_CO_z_clust, CSF_CO_z_dist)
-determine_numclust(CSF_AD_z_clust, CSF_AD_z_dist)
-
-determine_numclust(plasma_CO_z_clust, plasma_CO_z_dist)
-determine_numclust(plasma_AD_z_clust, plasma_AD_z_dist)
-# we conclude both 9 clusters 
-
-nclust <- 10
-
-ratio_AD_z_clustnum <- proteinByClust(ratio_AD_z_clust, ratio_AD_z_dist, nclust)
-ratio_CO_z_clustnum <- proteinByClust(ratio_CO_z_clust, ratio_CO_z_dist, nclust) # tbh 8 clusters are better
-
-ratio_AD_z_long <- proteinClustData(predratio_AD_z, ratio_AD_z_clustnum)
-ratio_CO_z_long <- proteinClustData(predratio_CO_z, ratio_CO_z_clustnum)
-
-generate_clusterplot(ratio_AD_z_long)
-generate_clusterplot(ratio_CO_z_long)
-ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == 10, ]
-
-nclust <- 9
-CSF_AD_z_clustnum <- proteinByClust(CSF_AD_z_clust, CSF_AD_z_dist, nclust)
-CSF_CO_z_clustnum <- proteinByClust(CSF_CO_z_clust, CSF_CO_z_dist, nclust)
-CSF_AD_z_long <- proteinClustData(predCSF_AD_z, CSF_AD_z_clustnum)
-CSF_CO_z_long <- proteinClustData(predCSF_CO_z, CSF_CO_z_clustnum)
-generate_clusterplot(CSF_AD_z_long)
-generate_clusterplot(CSF_CO_z_long)
-CSF_AD_z_clustnum[CSF_AD_z_clustnum$cluster == 9,]
-
-nclust <- 8
-plasma_AD_z_clustnum <- proteinByClust(plasma_AD_z_clust, plasma_AD_z_dist, nclust)
-plasma_CO_z_clustnum <- proteinByClust(plasma_CO_z_clust, plasma_CO_z_dist, nclust)
-plasma_AD_z_long <- proteinClustData(predplasma_AD_z, plasma_AD_z_clustnum)
-plasma_CO_z_long <- proteinClustData(predplasma_CO_z, plasma_CO_z_clustnum)
-generate_clusterplot(plasma_AD_z_long)
-generate_clusterplot(plasma_CO_z_long)
-plasma_CO_z_clustnum[plasma_CO_z_clustnum$cluster == 7,]
-
-# LOOK AT RATIO BW PLASMA AND CSF ALBUMIN (albumin index). look at which ones 
-# are correlated with albumin. (ALB.18380.78.3) Find which cluster it is in, etc 
-albumin_cluster_AD <- ratio_AD_z_clustnum[ratio_AD_z_clustnum$protein == "ALB.18380.78.3", ]$cluster
-albumin_prots_AD <-ratio_AD_z_clustnum[ratio_AD_z_clustnum$cluster == albumin_cluster_AD, ]$protein
-albumin_cluster_CO <- ratio_CO_z_clustnum[ratio_CO_z_clustnum$protein == "ALB.18380.78.3", ]$cluster
-albumin_prots_CO <-ratio_CO_z_clustnum[ratio_CO_z_clustnum$cluster == albumin_cluster_CO, ]$protein
-albumin_intersection <- intersect(albumin_prots_AD, albumin_prots_CO)
-
-# stratified analysis: remake the volcano plots 
-xVars <- c("Sex", "avg_drawage", "drawdate_diff", "storage_days", "batch_effect")
-ratio_AD_models <- generate_lmodels(all_ratio_AD, all_patientdata_AD, xVars)
-ratio_CO_models <- generate_lmodels(all_ratio_CO, all_patientdata_CO, xVars)
-
-xLabs <- c("Male", "Age", "Drawdate difference", "Storage days", "Study bias")
-ratio_AD_summary <- generate_lmsummary(ratio_AD_models, colnames(all_ratio), xLabs)
-ratio_CO_summary <- generate_lmsummary(ratio_CO_models, colnames(all_ratio), xLabs)
-
-ratio_AD_volcanodata <- generate_volcanodata(ratio_AD_summary, xLabs)
-ratio_CO_volcanodata <- generate_volcanodata(ratio_CO_summary, xLabs)
+rowwise_inverse_normal <- function(row) {
+  n <- length(row)
+  ranks <- rank(row, ties.method = "average")
+  percentiles <- (ranks - 0.5) / n
+  return(qnorm(percentiles))
+}
 
 
-ratio_AD_volcanodata_nonpadj <- generate_volcanodata_nonpadj(ratio_AD_summary)
+# all_plasma_rank <- as.data.frame(t(apply(all_plasma_scale, 1, rowwise_inverse_normal)))
+# all_CSF_rank <- as.data.frame(t(apply(all_CSF_scale, 1, rowwise_inverse_normal)))
 
-xLabs <- c("Male", "Age")
-generate_volcanoplot(ratio_AD_volcanodata, xLabs, 2, 10, c(FALSE, FALSE))
-generate_volcanoplot(ratio_CO_volcanodata, xLabs, 2, 10, c(FALSE, FALSE))
-generate_volcanoplot(ratio_AD_volcanodata_nonpadj, xLabs, 3)
 
+
+# Define DEA function
+dea <- function(protdata, patientdata, xVars, xLabs_lmsummary, xLabs_plot, 
+                ncol_plot, prot_num, reverse_bools) {
+  lmodels <- generate_lmodels(protdata, patientdata, xVars)
+  lsummary <- generate_lmsummary(lmodels, colnames(protdata), xLabs_lmsummary)
+  volcanodata <- generate_volcanodata(lsummary, xLabs_plot)
+  generate_volcanoplot(volcanodata, xLabs_plot, ncol_plot, prot_num, reverse_bools)
+}
+
+
+# AD/CO included 
 xVars <- c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect")
-ratio_models <- list()
-for(i in 1:ncol(all_ratio)) {
-  ratio_models[[i]] <- summary(lm(all_ratio[, i] ~ all_patientdata$Sex + all_patientdata$avg_drawage + 
-                                    relevel(factor(all_patientdata$final_status), ref = "CO") + 
-                                    all_patientdata$drawdate_diff + 
-                                    all_patientdata$storage_days + 
-                                    all_patientdata$batch_effect))
-}
-xLabs <- c("Male", "Age", "AD", "Drawdate difference", "storage days", "Study bias")
-ratio_summary <- generate_lmsummary(ratio_models, colnames(all_ratio), xLabs)
-ratio_volcanodata <- generate_volcanodata(ratio_summary, xLabs)
-generate_volcanoplot(ratio_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, FALSE))
+xLabs_lmsummary <- c("Male", "Age", "AD", "Drawdate difference", "storage days", "Study bias")
+xLabs_plot <- c("Male", "Age", "AD")
+reverse_bools <- c(FALSE, FALSE, TRUE)
+dedata_ratio_all <- dea(all_CSF_plasma, all_patientdata, xVars, xLabs_lmsummary, xLabs_plot, 3, 16, reverse_bools)
 
-xVars <- c("sex", "age", "AD", "drawdateDiff", "storageDays", "studyBias")
-for(i in 1:6) {
-  upProteins <- getTopProteins(ratio_volcanodata[[i]], "up")
-  downProteins <- getTopProteins(ratio_volcanodata[[i]], "down")
-  upEnriched <- enrichVolcanodata(upProteins, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_ADCOCombined/combinedData_", xVars[i], "_upRegulated.csv"))
-  downEnriched <- enrichVolcanodata(downProteins, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_ADCOCombined/combinedData_", xVars[i], "_downRegulated.csv"))
-}
+# AD/CO Separated Volcanoplots
+xVars <- c("Sex", "avg_drawage", "drawdate_diff", "storage_days", "batch_effect")
+xLabs_lmsummary <- c("Male", "Age", "Drawdate difference", "Storage days", "Study bias")
+xLabs_plot <- c("Male", "Age")
+reverse_bools <- c(FALSE, FALSE)
+dedata_ratio_AD <- dea(all_CSF_plasma_AD, all_patientdata_AD, xVars, xLabs_lmsummary, xLabs_plot, 2, 16, reverse_bools)
+dedata_ratio_CO <- dea(all_CSF_plasma_CO, all_patientdata_CO, xVars, xLabs_lmsummary, xLabs_plot, 2, 16, reverse_bools)
 
-# Get enrichR pathways 
-albumin_enriched <- enrichr(str_extract(albumin_intersection, "\\w+(?=\\.)"), "ChEA_2022")
-albumin_enriched <- albumin_enriched$ChEA_2022
-albumin_AD_enriched <- enrichr(str_extract(albumin_prots_AD, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
-albumin_CO_enriched <- enrichr(str_extract(albumin_prots_CO, "\\w+(?=\\.)"), "ChEA_2022")$ChEA_2022
-write.csv(albumin_AD_enriched, paste0(getwd(), "/Data/Cluster/albumin_AD.csv"))
-write.csv(albumin_CO_enriched, paste0(getwd(), "/Data/Cluster/albumin_CO.csv"))
+# CSF & Plasma Volcano plots 
+xVars <- c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect")
+xLabs_lmsummary <- c("Male", "Age", "AD", "drawdate_diff", "storage_days", "batch_effect")
+xLabs_plot <- c("Male", "Age", "AD")
+reverse_bools <- c(FALSE, FALSE, TRUE)
+dedata_CSF_all <- dea(all_CSF, all_patientdata, xVars, xLabs_lmsummary, xLabs_plot, 3, 16, reverse_bools)
+dedata_plasma_all <- dea(all_plasma, all_patientdata, xVars, xLabs_lmsummary, xLabs_plot, 3, 16, reverse_bools)
 
-xVars <- c("sex", "age", "drawdateDiff", "storageDays", "studyBias")
-for(i in 1:5) {
-  upProteinsCO <- getTopProteins(ratio_CO_volcanodata[[i]], "up")
-  downProteinsCO <- getTopProteins(ratio_CO_volcanodata[[i]], "down")
-  upEnriched <- enrichVolcanodata(upProteinsCO, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_CO/combinedData_CO_", xVars[i], "_upRegulated.csv"))
-  downEnriched <- enrichVolcanodata(downProteinsCO, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_CO/combinedData_CO_", xVars[i], "_downRegulated.csv"))
-  
-  upProteinsAD <- getTopProteins(ratio_AD_volcanodata[[i]], "up")
-  downProteinsAD <- getTopProteins(ratio_AD_volcanodata[[i]], "down")
-  upEnriched <- enrichVolcanodata(upProteinsAD, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_AD/combinedData_AD_", xVars[i], "_upRegulated.csv"))
-  downEnriched <- enrichVolcanodata(downProteinsAD, "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/combinedData_AD/combinedData_AD_", xVars[i], "_downRegulated.csv"))
-}
+# Interaction model 
 
-# Just curious how these are different. 
-all_CSF_lmodels <- generate_lmodels(all_CSF, all_patientdata, 
-                                    c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect"))
-all_CSF_lmsummary <- generate_lmsummary(all_CSF_lmodels, all_prots, c("Male", "Age", "AD", "drawdate_diff", "storage_days", "batch_effect"))
-all_CSF_volcanodata <- generate_volcanodata(all_CSF_lmsummary, c("Male", "Age", "AD"))
-generate_volcanoplot(all_CSF_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, TRUE))
 
-all_plasma_lmodels <- generate_lmodels(all_plasma, all_patientdata, 
-                                       c("Sex", "avg_drawage", "final_status", "drawdate_diff", "storage_days", "batch_effect"))
-all_plasma_lmsummary <- generate_lmsummary(all_plasma_lmodels, all_prots, c("Male", "Age", "AD", "drawdate_diff", "storage_days", "batch_effect"))
-all_plasma_volcanodata <- generate_volcanodata(all_plasma_lmsummary, c("Male", "Age", "AD"))
-generate_volcanoplot(all_plasma_volcanodata, c("Male", "Age", "AD"), 3, 10, c(FALSE, FALSE, TRUE))
+# Robustness Analysis: Volcanoplots for 20 & 40 day interval drawdate bins
+drawdate_bins_20 <- c(0, 1, 20, 40, 60, 80, 100, 120)
+dedata_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_40, 1, ncol = 2)
 
-# knight before p-adjusted VS stanford volcano plots --> compare enrichR pathways 
-knight_ratio <- knight_CSF_prots[-c(1:3)] / knight_plasma_prots[-c(1:3)]
-knight_all_prots <- colnames(knight_ratio)
+protdata, patientdata, drawdate_bins, factor_num, ncol, prot_num = 10)
 
-knight_AD_ratio <- knight_ratio[knight_patients$final_status == "AD", ]
-knight_CO_ratio <- knight_ratio[knight_patients$final_status == "CO", ]
-knight_AD_patients <- knight_patients[knight_patients$final_status == "AD", ]
-knight_CO_patients <- knight_patients[knight_patients$final_status == "CO", ]
+dea_by_bin(all_CSF, all_patientdata, drawdate_bins_20, 1, ncol = 4)
+drawdate_bins_40 <- c(0, 1, 40, 80, 120)
+dea_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_40, 1, ncol = 2)
 
-knight_AD_lmodels <- generate_lmodels(knight_AD_ratio, knight_AD_patients, c("Sex", "avg_drawage"))
-knight_CO_lmodels <- generate_lmodels(knight_CO_ratio, knight_CO_patients, c("Sex", "avg_drawage"))
+# Robustness Analysis: log2fc vs log2fc for 20 & 40 day interval drawdate bins
 
-knight_AD_lmsummary <- generate_lmsummary(knight_AD_lmodels, knight_all_prots, c("Male", "Age"))
-knight_CO_lmsummary <- generate_lmsummary(knight_CO_lmodels, knight_all_prots, c("Male", "Age"))
 
-knight_AD_volcanodata <- generate_volcanodata(knight_AD_lmsummary, c("Male", "Age"))
-knight_CO_volcanodata <- generate_volcanodata(knight_CO_lmsummary, c("Male", "Age"))
+# Robustness Analysis: p value vs p value for 20 & 40 day interval drawdate bins
 
-generate_volcanoplot(knight_AD_volcanodata, c("Male", "Age"), 2, 10, c(FALSE, FALSE))
-generate_volcanoplot(knight_CO_volcanodata, c("Male", "Age"), 2, 10, c(FALSE, FALSE))
+
+
+
 
 #interaction model bw age and alzheimers disease status (extract CD? score)
 knight_patients_CDR <- knight_plasma_patients[knight_plasma_patients$PA_DB_UID %in% knight_patients$PA_DB_UID, ] %>%
@@ -468,15 +138,8 @@ knight_interaction_lmsummary <- generate_lmsummary(knight_interaction_lmodels, k
 knight_interaction_volcanodata <- generate_volcanodata(knight_interaction_lmsummary, c("Male", "Age*CDR", "drawdate_diff", "storage_days"))
 generate_volcanoplot(knight_interaction_volcanodata, c("Male", "Age*CDR"), 2, 10, c(FALSE, FALSE))
 
-xVars <- c("Male", "Age*CDR")
-for(i in 1:2) {
-  upEnriched <- enrichVolcanodata(
-    getTopProteins(knight_interaction_volcanodata[[i]], "up"), "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/Interaction_model/interaction_", xVars[i], "_upRegulated.csv"))
-  upEnriched <- enrichVolcanodata(
-    getTopProteins(knight_interaction_volcanodata[[i]], "down"), "ChEA_2022")$ChEA_2022
-  write.csv(upEnriched, paste0(getwd(), "/Data/DiffAnalysis/Interaction_model/interaction_", xVars[i], "_downRegulated.csv"))
-}
+
+
 
 
 ## compare with combined dataset
@@ -490,6 +153,15 @@ all_prots <- names(all_ratio)
 all_interaction_lmsummary <- generate_lmsummary(all_interaction_lmodels, all_prots, c("Male", "Age", "AD"))
 all_interaction_volcanodata <- generate_volcanodata(all_interaction_lmsummary, c("Male", "Age", "AD"))
 generate_volcanoplot(all_interaction_volcanodata, c("Male", "Age", "AD"))
+
+
+
+
+
+
+
+
+
 
 # Clustering and enrichment analysis 
 ratio_AD_clustable <- table(ratio_AD_z_clustnum$cluster)
