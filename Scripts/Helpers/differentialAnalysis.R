@@ -79,7 +79,7 @@ generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp,
     annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
              label = label_text, hjust = 0, size = 4) +
     geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = log2fc),
-                    size = 3, color = "black", nudge_y = -0.2) + 
+                    size = 3, color = "black", nudge_y = -0.01) + 
     theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
           plot.background = element_rect(fill = "white"),
           axis.title = element_text(size = 12),
@@ -112,7 +112,7 @@ generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_tem
     annotate("text", x = min((volcanodata[[i]])$log2fc)*1.1, y = max((volcanodata[[i]])$qval), 
              label = label_text, hjust = 0, size = 4) +
     geom_text_repel(data = top_genes, aes(label = Protein, y = qval, x = -log2fc),
-                    size = 3, color = "black", nudge_y = -0.2) + 
+                    size = 3, color = "black", nudge_y = -0.01) + 
     theme(panel.border = element_rect(colour = "black", fill = NA, size = 1),
           plot.background = element_rect(fill = "white"),
           axis.title = element_text(size = 12),
@@ -125,10 +125,12 @@ generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_tem
   return (image)
 }
 
-generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_vec) {
+generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_vec, xVars_choice = NULL) {
   volcanoplot <- list()
-  for(i in 1:length(xVars)) {
-    
+  if (is.null(xVars_choice)) {
+    xVars_choice <- 1:length(xVars)
+  }
+  for(i in xVars_choice) {
     volcanodata_temp <- volcanodata[[i]]
     top_volcanodata <- volcanodata_temp[volcanodata_temp$diffexpressed != "none", ]
     top_genes <- head((volcanodata[[i]])[order(-volcanodata[[i]]$qval), ], prot_nums)
@@ -143,9 +145,11 @@ generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_v
       scale_size <- c(1, 6)
     }
     if (reverse_vec[i]) {
-      volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval, num_proteins)
+      volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, 
+                                                        scale_size, top_genes, max_qval, num_proteins)
     } else {
-      volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, scale_size, top_genes, max_qval, num_proteins)
+      volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, 
+                                                    scale_size, top_genes, max_qval, num_proteins)
     }
   }
   if (length(xVars) == 1) {

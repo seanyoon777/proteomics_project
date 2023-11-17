@@ -25,18 +25,27 @@ all_CSF <- get_biodata("combined/CSF_raw_lodfiltered.csv")
 all_CSF_AD <- get_biodata("combined/CSF_raw_AD_lodfiltered.csv")
 all_CSF_CO <- get_biodata("combined/CSF_raw_CO_lodfiltered.csv")
 
-# Experiment 1: Raw values  
-all_CSF_plasma <- all_CSF / all_plasma
-all_CSF_plasma_AD <- all_CSF_AD / all_plasma_AD
-all_CSF_plasma_CO <- all_CSF_CO / all_plasma_CO
-
-# Experiment 2 default: z-score, rank norm
 rank_transform <- function(df) {
   temp <- as.data.frame(scale(df))
   temp <- as.data.frame(t(apply(temp, 1, rank)))
   return(temp)
 }
 
+# Experiment 3: ComBat
+batch <- factor(ifelse(all_patientdata$batch_effect == 1, "batch1", "batch2"))
+all_CSF <- as.data.frame(t(ComBat(dat = t(all_CSF), batch = batch, mod = NULL)))
+all_plasma <- as.data.frame(t(ComBat(dat = t(all_plasma), batch = batch, mod = NULL)))
+all_CSF_AD <- all_CSF[all_patientdata$final_status == "AD", ]
+all_CSF_CO <- all_CSF[all_patientdata$final_status == "CO", ]
+all_plasma_AD <- all_plasma[all_patientdata$final_status == "AD", ]
+all_plasma_CO <- all_plasma[all_patientdata$final_status == "CO", ]
+
+# Experiment 1: Raw values  
+all_CSF_plasma <- all_CSF / all_plasma
+all_CSF_plasma_AD <- all_CSF_AD / all_plasma_AD
+all_CSF_plasma_CO <- all_CSF_CO / all_plasma_CO
+
+# Experiment 2 default: z-score, rank norm
 all_plasma <- rank_transform(all_plasma)
 all_plasma_AD <- rank_transform(all_plasma_AD)
 all_plasma_CO <- rank_transform(all_plasma_CO)
@@ -53,8 +62,6 @@ all_CSF_plasma_CO <- all_CSF_CO / all_plasma_CO
 all_CSF_plasma <- all_CSF - all_plasma
 all_CSF_plasma_AD <- all_CSF_AD - all_plasma_AD
 all_CSF_plasma_CO <- all_CSF_CO - all_plasma_CO
-
-
 
 rowwise_inverse_normal <- function(row) {
   n <- length(row)
@@ -107,13 +114,19 @@ dedata_plasma_all <- dea(all_plasma, all_patientdata, xVars, xLabs_lmsummary, xL
 
 # Robustness Analysis: Volcanoplots for 20 & 40 day interval drawdate bins
 drawdate_bins_20 <- c(0, 1, 20, 40, 60, 80, 100, 120)
-dedata_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_40, 1, ncol = 2)
+dedata_by_20 <- dedata_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_20)
+dea_by_bin(dedata_by_20, drawdate_bins_20, 1, ncol = 4)
+pairwise_scatter(dedata_by_20$dedata, drawdate_bins_20, 1, "qval")
 
-protdata, patientdata, drawdate_bins, factor_num, ncol, prot_num = 10)
 
-dea_by_bin(all_CSF, all_patientdata, drawdate_bins_20, 1, ncol = 4)
+
 drawdate_bins_40 <- c(0, 1, 40, 80, 120)
-dea_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_40, 1, ncol = 2)
+dedata_by_40 <- dedata_by_bin(all_CSF_plasma, all_patientdata, drawdate_bins_40)
+dedata_by_40_log <- dedata_by_bin(log10(all_CSF_plasma), all_patientdata, drawdate_bins_40)
+dea_by_bin(dedata_by_40_log, drawdate_bins_40, 1, ncol = 2)
+pairwise_scatter(dedata_by_40$dedata, drawdate_bins_40, 1, "qval")
+pairwise_scatter(dedata_by_40_log$dedata, drawdate_bins_40, 2, "log2fc")
+
 
 # Robustness Analysis: log2fc vs log2fc for 20 & 40 day interval drawdate bins
 
