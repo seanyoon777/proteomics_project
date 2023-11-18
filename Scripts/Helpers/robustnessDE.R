@@ -23,7 +23,7 @@ dedata_by_bin <- function(protdata, patientdata, drawdate_bins) {
   
   for(i in 1:num) {
     idx <- patientdata$drawdate_diff < drawdate_bins[i + 1] & patientdata$drawdate_diff >= drawdate_bins[i]
-    new_patientdata <- all_patientdata[idx, ]
+    new_patientdata <- patientdata[idx, ]
     new_protdata <- protdata[idx, ]
     
     if(sum(new_patientdata$batch_effect == 1) * sum(new_patientdata$batch_effect == 0) == 0) {
@@ -47,8 +47,8 @@ dea_by_bin <- function(res, drawdate_bins, factor_num, ncol, prot_nums = 10) {
   volcanoplot <- list()
   for(i in 1:num) {
     text_label <- paste0(drawdate_bins[i], "-", drawdate_bins[i + 1], " days, ", res$nsamples[[i]], " samples")
-    volcanoplot[[i]] <- generate_volcanoplot(res$dedata[[i]], text_label, 1, prot_nums, 
-                                             reverse_bools, xVars_choice = factor_num:factor_num)
+    volcanoplot[[i]] <- generate_volcanoplot(res$dedata[[i]], "", 1, prot_nums, 
+                                             reverse_bools, xVars_choice = factor_num:factor_num, text_label)
   }
   
   title <- paste0(titles[factor_num], " Proteome by Drawdate Difference")

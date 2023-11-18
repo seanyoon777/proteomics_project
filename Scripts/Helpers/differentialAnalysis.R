@@ -60,8 +60,11 @@ generate_volcanodata_nonpadj <- function(data) {
 }
 
 generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, 
-                                      scale_size, top_genes, max_qval, num_proteins) {
-  label_text <- paste(xVars[i], " (", num_proteins, " Proteins)", sep = "")
+                                      scale_size, top_genes, max_qval, num_proteins, label = NULL) {
+  if (is.null(label)) {
+    label <- xVars[i]
+  }
+  label_text <- paste(label, " (", num_proteins, " Proteins)", sep = "")
   image <- ggplot(volcanodata_temp, aes(x = log2fc, y = qval, color = factor(diffexpressed))) + 
     geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
     scale_size_continuous(range = scale_size) +
@@ -93,8 +96,11 @@ generate_unit_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp,
 }
 
 generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_temp, 
-                                          scale_size, top_genes, max_qval, num_proteins) {
-  label_text <- paste(xVars[i], " (", num_proteins, " Proteins)", sep = "")
+                                          scale_size, top_genes, max_qval, num_proteins, label = NULL) {
+  if (is.null(label)) {
+    label <- xVars[i]
+  }
+  label_text <- paste(label, " (", num_proteins, " Proteins)", sep = "")
   image <- ggplot(volcanodata_temp, aes(x = -log2fc, y = qval, color = factor(diffexpressed))) + 
     geom_point(aes(size = point_size, alpha = abs(qval)/max_qval), na.rm = T) +
     scale_size_continuous(range = scale_size) +
@@ -125,7 +131,7 @@ generate_unit_rev_volcanoplot <- function(i, xVars, volcanodata, volcanodata_tem
   return (image)
 }
 
-generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_vec, xVars_choice = NULL) {
+generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_vec, xVars_choice = NULL, label = NULL) {
   volcanoplot <- list()
   if (is.null(xVars_choice)) {
     xVars_choice <- 1:length(xVars)
@@ -146,10 +152,10 @@ generate_volcanoplot <- function(volcanodata, xVars, ncols, prot_nums, reverse_v
     }
     if (reverse_vec[i]) {
       volcanoplot[[i]] <- generate_unit_rev_volcanoplot(i, xVars, volcanodata, volcanodata_temp, 
-                                                        scale_size, top_genes, max_qval, num_proteins)
+                                                        scale_size, top_genes, max_qval, num_proteins, label)
     } else {
       volcanoplot[[i]] <- generate_unit_volcanoplot(i, xVars, volcanodata, volcanodata_temp, 
-                                                    scale_size, top_genes, max_qval, num_proteins)
+                                                    scale_size, top_genes, max_qval, num_proteins, label)
     }
   }
   if (length(xVars) == 1) {
